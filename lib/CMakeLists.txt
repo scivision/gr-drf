@@ -36,7 +36,8 @@ if(NOT drf_sources)
 endif(NOT drf_sources)
 
 add_library(gnuradio-drf SHARED ${drf_sources})
-target_link_libraries(gnuradio-drf ${Boost_LIBRARIES} ${GNURADIO_ALL_LIBRARIES})
+# target_link_libraries(gnuradio-juha ${Boost_LIBRARIES} ${GNURADIO_RUNTIME_LIBRARIES} ${FFTW3F_LIBRARIES} -lquadmath -lhdf5 -ldigital_rf -lm)
+target_link_libraries(gnuradio-drf ${Boost_LIBRARIES} ${GNURADIO_ALL_LIBRARIES} -lhdf5 -ldigital_rf -lm)
 set_target_properties(gnuradio-drf PROPERTIES DEFINE_SYMBOL "gnuradio_drf_EXPORTS")
 
 if(APPLE)
