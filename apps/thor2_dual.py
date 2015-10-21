@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 #
 # Record plasma line and ion line channels to ring buffer on disk.
-# 
+#
 # (c) 2014 Juha Vierinen
 #
 from gnuradio import eng_notation
 from gnuradio import gr
 from gnuradio import uhd
 from gnuradio.eng_option import eng_option
-from gnuradio import filter 
-from gnuradio.filter import firdes 
-import gnuradio.blocks 
+from gnuradio import filter
+from gnuradio.filter import firdes
+import gnuradio.blocks
 
 from optparse import OptionParser
 import sys, time, os, math, re, glob, numpy
@@ -34,7 +34,12 @@ parser.add_option("-c", "--centerfreqs", dest="centerfreqs", action="store", typ
 parser.add_option("-g", "--gain", dest="gain", action="store", default=0,
                   help="Gain (default %default)")
 
-parser.add_option("-f", "--filesize", dest="filesize", action="store",type="int", 
+parser.add_option("-p", "--cycle-length", dest="period", action="store",
+                  type="int", default=10,
+                  help="Repeat time of experiment cycle. Align to start of " +
+                       "next cycle if start time has passed (default %default)")
+
+parser.add_option("-f", "--filesize", dest="filesize", action="store",type="int",
                   help="File size (samples)")
 
 parser.add_option("-r", "--samplerate", dest="samplerate", action="store", type="long", default=1000000,
@@ -89,8 +94,6 @@ if not op.nosync:
 
 if op.filesize == None:
    op.filesize=op.samplerate
-
-op.period=1.0
 
 # wait until time 0.2 to 0.5 past full second, then latch.
 # we have to trust NTP to be 0.2 s accurate. It might be a good idea to do a ntpdate before running
