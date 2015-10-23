@@ -110,6 +110,8 @@ u.set_subdev_spec(op.subdev)
 u.set_samp_rate(op.samplerate)
 u.set_center_freq(op.centerfreqs[0],0)
 u.set_center_freq(op.centerfreqs[1],1)
+u.set_gain(op.gain,0)
+u.set_gain(op.gain,1)
 
 # create flowgraph
 fg = gr.top_block()
