@@ -25,6 +25,10 @@
 #include <gnuradio/io_signature.h>
 #include "digital_rf_impl.h"
 
+extern "C" {
+#include <digital_rf.h>
+}
+
 namespace gr {
   namespace drf {
 
@@ -195,7 +199,7 @@ namespace gr {
 								 int compression_level, int checksum, int is_complex,
 								 int num_subchannels, int marching_dots);
 	  */
-      char uuid[512] = "THIS_UUID_LACKS_ENTROPY";
+	  char uuid[512] = "THIS_UUID_LACKS_ENTROPY";
 	  drf = digital_rf_create_write_hdf5(dirn, dtype, file_len, files_per_dir, t0, sample_rate, uuid, 0, 0, 1, 1, 1);
 	  printf("done\n");
 	  first=0;

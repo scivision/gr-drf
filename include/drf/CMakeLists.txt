@@ -22,5 +22,6 @@
 ########################################################################
 install(FILES
     api.h
-    digital_rf.h DESTINATION include/drf
+    digital_rf.h
+    dddc.h DESTINATION include/drf
 )

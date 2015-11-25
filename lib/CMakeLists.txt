@@ -27,6 +27,7 @@ link_directories(${Boost_LIBRARY_DIRS})
 
 list(APPEND drf_sources
     digital_rf_impl.cc
+    dddc_impl.cc
 )
 
 set(drf_sources "${drf_sources}" PARENT_SCOPE)
