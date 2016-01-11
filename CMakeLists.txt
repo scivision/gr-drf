@@ -64,6 +64,15 @@ if(NOT Boost_FOUND)
 endif()
 
 ########################################################################
+# Find HDF5
+########################################################################
+find_package(HDF5)
+
+if(NOT HDF5_FOUND)
+    message(FATAL_ERROR "HDF5 required to compile drf")
+endif()
+
+########################################################################
 # Install directories
 ########################################################################
 include(GrPlatform) #define LIB_SUFFIX

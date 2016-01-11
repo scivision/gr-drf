@@ -22,8 +22,8 @@
 ########################################################################
 include(GrPlatform) #define LIB_SUFFIX
 
-include_directories(${Boost_INCLUDE_DIR})
-link_directories(${Boost_LIBRARY_DIRS})
+include_directories(${Boost_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
+link_directories(${Boost_LIBRARY_DIRS} ${HDF5_LIBRARY_DIRS})
 
 list(APPEND drf_sources
     digital_rf_impl.cc
@@ -38,7 +38,7 @@ endif(NOT drf_sources)
 
 add_library(gnuradio-drf SHARED ${drf_sources})
 # target_link_libraries(gnuradio-juha ${Boost_LIBRARIES} ${GNURADIO_RUNTIME_LIBRARIES} ${FFTW3F_LIBRARIES} -lquadmath -lhdf5 -ldigital_rf -lm)
-target_link_libraries(gnuradio-drf ${Boost_LIBRARIES} ${GNURADIO_ALL_LIBRARIES} -lhdf5 -ldigital_rf -lm)
+target_link_libraries(gnuradio-drf ${Boost_LIBRARIES} ${HDF5_LIBRARIES} ${GNURADIO_ALL_LIBRARIES} -ldigital_rf -lm)
 set_target_properties(gnuradio-drf PROPERTIES DEFINE_SYMBOL "gnuradio_drf_EXPORTS")
 
 if(APPLE)
