@@ -45,6 +45,9 @@ parser.add_option("-f", "--filesize", dest="filesize", action="store",type="int"
 parser.add_option("-r", "--samplerate", dest="samplerate", action="store", type="long", default=1000000,
                   help="Sample rate (default %default Hz)")
 
+parser.add_option("-i", "--dec", dest="dec", type="int", action="store", default=1,
+                  help="Integrate and decimate by this factor (default = %default)")
+
 parser.add_option("-s", "--starttime", dest="starttime", action="store",
                   type="int",
                   help="Start time of the experiment (unix time)")
@@ -92,8 +95,19 @@ if not op.nosync:
 #u.set_clock_source("none", uhd.ALL_MBOARDS)
 #u.set_time_source("none", uhd.ALL_MBOARDS)
 
+if op.dec > 1:
+    taps = firdes.low_pass_2(1.0,
+                             float(op.samplerate),
+                             float(op.samplerate)/float(op.dec)/2.0,
+                             0.2*(float(op.samplerate)/float(op.dec)),
+                       	     80.0,
+                             window=firdes.WIN_BLACKMAN_hARRIS)
+
+    lpf0 = filter.freq_xlating_fir_filter_scf(op.dec,taps,0.0,op.samplerate)
+    lpf1 = filter.freq_xlating_fir_filter_scf(op.dec,taps,0.0,op.samplerate)
+
 if op.filesize == None:
-   op.filesize=op.samplerate
+   op.filesize=op.samplerate/op.dec
 
 # wait until time 0.2 to 0.5 past full second, then latch.
 # we have to trust NTP to be 0.2 s accurate. It might be a good idea to do a ntpdate before running
@@ -125,8 +139,12 @@ if op.stop_on_dropped == True:
 else:
    op.stop_on_dropped = 0
 
-dst_0 = drf.digital_rf(op.dir0, int(op.filesize), int(3600), 2*gr.sizeof_short, op.samplerate,0, op.stop_on_dropped)
-dst_1 = drf.digital_rf(op.dir1, int(op.filesize), int(3600), 2*gr.sizeof_short, op.samplerate,0, op.stop_on_dropped)
+if op.dec > 1:
+    dst_0 = drf.digital_rf(op.dir0, int(op.filesize), int(3600), gr.sizeof_gr_complex, op.samplerate,0, op.stop_on_dropped)
+    dst_1 = drf.digital_rf(op.dir1, int(op.filesize), int(3600), gr.sizeof_gr_complex, op.samplerate,0, op.stop_on_dropped)
+else:
+    dst_0 = drf.digital_rf(op.dir0, int(op.filesize), int(3600), 2*gr.sizeof_short, op.samplerate,0, op.stop_on_dropped)
+    dst_1 = drf.digital_rf(op.dir1, int(op.filesize), int(3600), 2*gr.sizeof_short, op.samplerate,0, op.stop_on_dropped)
 
 # find next suitable launch time
 if op.starttime is None:
@@ -137,8 +155,12 @@ op.starttime = sampler_util.find_next(op.starttime,op.period)
 if not op.nosync:
    u.set_start_time(uhd.time_spec(op.starttime))
 
-fg.connect((u, 0), (dst_0,0))
-fg.connect((u, 1), (dst_1,0))
+if op.dec > 1:
+    fg.connect((u, 0), (lpf0,0), (dst_0,0))
+    fg.connect((u, 1), (lpf1,0), (dst_1,0))
+else:
+    fg.connect((u, 0), (dst_0,0))
+    fg.connect((u, 1), (dst_1,0))
 
 print "Launch time: ",op.starttime
 print "Sample rate: ",op.samplerate
@@ -149,8 +171,12 @@ print "Starting time: ",op.starttime
 print "Dir 0: ",op.dir0
 print "Dir 1: ",op.dir1
 
-sampler_util.write_metadata_drf(op.dir0,1,[op.centerfreqs[0]],op.starttime,dtype="<i2",itemsize=4,sr=op.samplerate,extra_keys=["usrp_ip"],extra_values=[op.mboard])
-sampler_util.write_metadata_drf(op.dir1,1,[op.centerfreqs[1]],op.starttime,dtype="<i2",itemsize=4,sr=op.samplerate,extra_keys=["usrp_ip"],extra_values=[op.mboard])
+if op.dec > 1:
+    sampler_util.write_metadata_drf(op.dir0,1,[op.centerfreqs[0]],op.starttime,dtype="<f4",itemsize=4,sr=op.samplerate/op.dec,extra_keys=["usrp_ip"],extra_values=[op.mboard])
+    sampler_util.write_metadata_drf(op.dir1,1,[op.centerfreqs[1]],op.starttime,dtype="<f4",itemsize=4,sr=op.samplerate/op.dec,extra_keys=["usrp_ip"],extra_values=[op.mboard])
+else:
+    sampler_util.write_metadata_drf(op.dir0,1,[op.centerfreqs[0]],op.starttime,dtype="<i2",itemsize=4,sr=op.samplerate,extra_keys=["usrp_ip"],extra_values=[op.mboard])
+    sampler_util.write_metadata_drf(op.dir1,1,[op.centerfreqs[1]],op.starttime,dtype="<i2",itemsize=4,sr=op.samplerate,extra_keys=["usrp_ip"],extra_values=[op.mboard])
 
 fg.start()
 
