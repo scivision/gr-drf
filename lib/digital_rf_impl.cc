@@ -84,6 +84,7 @@ namespace gr {
      */
     digital_rf_impl::~digital_rf_impl()
     {
+      digital_rf_close_write_hdf5(drf);
     }
 
     int digital_rf_impl::detect_overflow(uint64_t start, uint64_t end)
