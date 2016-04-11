@@ -137,7 +137,7 @@ namespace gr {
         t0_frac = pmt::to_double(pmt::tuple_ref(value, 1));
         t0 = (uint64_t)(sample_rate*t0_sec);
         _t0 = (uint64_t)(((uint64_t)sample_rate)*((uint64_t)t0_sec)+((uint64_t)(sample_rate*t0_frac)));
-        ut0 = ((__float128)t0_sec) + (__float128)t0_frac;
+	//        ut0 = ((__float128)t0_sec) + (__float128)t0_frac;
 	printf("offset0 %lu",offset);
       }
     }
