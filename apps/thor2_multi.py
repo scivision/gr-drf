@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 #
-# Record arbitrary number of channels.
+# Record data from synchronized USRPs in DigitalRF format.
 #
 # (c) 2014 Juha Vierinen
 # (c) 2015 Ryan Volz
 #
+from __future__ import print_function
 from gnuradio import gr
 from gnuradio import uhd
 from gnuradio import filter
@@ -13,15 +14,16 @@ from gnuradio.filter import firdes
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from textwrap import fill, dedent, TextWrapper
 from itertools import cycle, islice, repeat
-import sys, time, os, math, re, glob, numpy
+import sys, time, os, math, re, glob, numpy, datetime, pytz, subprocess
+import dateutil.parser
 
 import drf, sampler_util
 
 first_file_idx = 0
 
-print 'THOR version 2.0 (The Haystack Observatory Recorder)\n'
-print '(c) 2014 Juha Vierinen'
-print '(c) 2015 Ryan Volz\n\n'
+print('THOR version 2.0 (The Haystack Observatory Recorder)\n')
+print('(c) 2014 Juha Vierinen')
+print('(c) 2015 Ryan Volz\n\n')
 
 scriptname = os.path.basename(sys.argv[0])
 
@@ -105,10 +107,14 @@ parser.add_argument('-i', '--dec', dest='dec',
                     help='''Integrate and decimate by this factor.
                             (default: %(default)s)''')
 
-parser.add_argument('-t', '--starttime', dest='starttime',
-                    type=int,
-                    help='''Start time of the experiment in seconds from Unix
-                            epoch.
+parser.add_argument('-s', '--starttime', dest='starttime',
+                    help='''Start time of the experiment in ISO8601 format:
+                            2016-01-01T15:24:00Z
+                            (default: %(default)s)''')
+
+parser.add_argument('-e', '--endtime', dest='endtime',
+                    help='''End time of the experiment in ISO8601 format:
+                            2016-01-01T16:24:00Z
                             (default: %(default)s)''')
 
 parser.add_argument('-p', '--cycle-length', dest='period',
@@ -117,17 +123,21 @@ parser.add_argument('-p', '--cycle-length', dest='period',
                             next cycle if start time has passed.
                             (default: %(default)s)''')
 
-parser.add_argument('-s', '--filesize', dest='filesize',
+parser.add_argument('-n', '--filesize', dest='filesize',
                     type=int,
                     help='''File size in samples.
                             (default: %(default)s)''')
 
-parser.add_argument('-q', '--stop_on_dropped', dest='stop_on_dropped', action='store_true',
+parser.add_argument('--stop_on_dropped', dest='stop_on_dropped', action='store_true',
                     help='''Stop on dropped packet.
                             (default: %(default)s)''')
 
 parser.add_argument('--nosync', dest='nosync', action='store_true',
                     help='''No syncing with external clock.
+                            (default: %(default)s)''')
+
+parser.add_argument('--realtime', dest='realtime', action='store_true',
+                    help='''Enable realtime scheduling if possible.
                             (default: %(default)s)''')
 
 op = parser.parse_args()
@@ -161,14 +171,14 @@ op.gains = list(islice(cycle(op.gains), 0, nchs))
 # evaluate samplerate to float
 op.samplerate = eval(op.samplerate)
 
-print 'Main boards: ',op.mboards
-print 'Subdevices: ',op.subdevs
-print 'Channel names: ',op.chs
-print 'Frequency: ',op.centerfreqs
-print 'Gain: ',op.gains
-print 'Stream arguments: ',op.stream_args
-print 'Sample rate: ',op.samplerate
-print 'Data dir: ',op.dir
+print('Main boards: ',op.mboards)
+print('Subdevices: ',op.subdevs)
+print('Channel names: ',op.chs)
+print('Frequency: ',op.centerfreqs)
+print('Gain: ',op.gains)
+print('Stream arguments: ',op.stream_args)
+print('Sample rate: ',op.samplerate)
+print('Data dir: ',op.dir)
 
 # sanity check, number of total subdevs should be same as number of channels
 mboards_bychan = []
@@ -181,12 +191,13 @@ for mb, sd in zip(op.mboards, op.subdevs):
 if len(subdevs_bychan) != nchs:
     raise ValueError('Number of device channels does not match the number of channel names provided')
 
-r = gr.enable_realtime_scheduling()
+if op.realtime:
+    r = gr.enable_realtime_scheduling()
 
-if r == gr.RT_OK:
-   print('Realtime scheduling enabled')
-else:
-   print 'Note: failed to enable realtime scheduling'
+    if r == gr.RT_OK:
+       print('Realtime scheduling enabled')
+    else:
+       print('Note: failed to enable realtime scheduling')
 
 # create usrp source block
 mboard_addrstr = ','.join(['addr{0}={1}'.format(n, s.strip()) for n, s in enumerate(op.mboards)])
@@ -209,17 +220,6 @@ if not op.nosync:
 if op.filesize == None:
    op.filesize=op.samplerate/op.dec
 
-# wait until time 0.2 to 0.5 past full second, then latch.
-# we have to trust NTP to be 0.2 s accurate. It might be a good idea to do a ntpdate before running
-# uhdsampler.py
-tt = time.time()
-while tt-math.floor(tt) < 0.2 or tt-math.floor(tt) > 0.3:
-    tt = time.time()
-    time.sleep(0.01)
-print('Latching at '+str(tt))
-if not op.nosync:
-   u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt)+1.0))
-
 for mb_num in range(nmboards):
     u.set_subdev_spec(op.subdevs[mb_num], mb_num)
 u.set_samp_rate(op.samplerate)
@@ -233,15 +233,51 @@ if op.stop_on_dropped == True:
 else:
    op.stop_on_dropped = 0
 
-# find next suitable launch time
-if op.starttime is None:
-    op.starttime = math.ceil(time.time())
+# print current time and NTP status
+subprocess.call(('timedatectl', 'status'))
 
-print 'Launch time: ',op.starttime
-op.starttime = sampler_util.find_next(op.starttime,op.period)
-print 'Starting time: ',op.starttime
+# parse time arguments as very last thing before launching
+if op.starttime is None:
+    st0 = math.ceil(time.time())
+else:
+    dtst0 = dateutil.parser.parse(op.starttime)
+    st0 = (dtst0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds()
+
+    print("Start time: %s (%ld) at %ld" % (dtst0.strftime('%a %b %d %H:%M:%S %Y'),st0,time.time()))
+
+if op.endtime is None:
+    et0 = None
+else:
+    dtet0 = dateutil.parser.parse(op.endtime)
+    et0 = (dtet0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds()
+
+    print("End time: %s (%ld) at %ld" % (dtet0.strftime('%a %b %d %H:%M:%S %Y'),et0,time.time()))
+
+# find next suitable launch time
+st = sampler_util.find_next(st0, op.period)
+print('Launch time: ', st)
 if not op.nosync:
-   u.set_start_time(uhd.time_spec(op.starttime))
+   u.set_start_time(uhd.time_spec(st))
+
+if st >= et0:
+    raise ValueError('End time is before launch time!')
+
+# wait for the start time if it is not past
+while (st - time.time()) > 10:
+    print("Standby %ld remaining..." % (st - time.time()))
+    sys.stdout.flush()
+    time.sleep(1)
+
+# wait until time 0.2 to 0.5 past full second, then latch.
+# we have to trust NTP to be 0.2 s accurate. It might be a good idea to do a ntpdate before running
+# uhdsampler.py
+tt = time.time()
+while tt-math.floor(tt) < 0.2 or tt-math.floor(tt) > 0.3:
+    tt = time.time()
+    time.sleep(0.01)
+print('Latching at '+str(tt))
+if not op.nosync:
+   u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt)+1.0))
 
 # create flowgraph
 fg = gr.top_block()
@@ -265,7 +301,7 @@ if op.dec > 1:
         fg.connect((u, k), (lpfs[k], 0), (dsts[k], 0))
 
         sampler_util.write_metadata_drf(
-            dirs[k], 1, [op.centerfreqs[k]], op.starttime,
+            dirs[k], 1, [op.centerfreqs[k]], st,
             dtype='<f4', itemsize=gr.sizeof_gr_complex, sr=op.samplerate/op.dec,
             extra_keys=['usrp_ip', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'],
             extra_values=[mboards_bychan[k], subdevs_bychan[k],
@@ -281,11 +317,19 @@ else:
         fg.connect((u, k), (dsts[k], 0))
 
         sampler_util.write_metadata_drf(
-            dirs[k], 1, [op.centerfreqs[k]], op.starttime,
+            dirs[k], 1, [op.centerfreqs[k]], st,
             dtype='<i2', itemsize=2*gr.sizeof_short, sr=op.samplerate,
             extra_keys=['usrp_ip', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'],
             extra_values=[mboards_bychan[k], subdevs_bychan[k],
                           op.gains[k], op.stream_args],
         )
 
-fg.run()
+fg.start()
+
+if et0 is None:
+    fg.wait()
+else:
+    while(time.time() < et0):
+       time.sleep(1)
+
+fg.stop()
