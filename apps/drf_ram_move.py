@@ -1,75 +1,125 @@
 #!/usr/bin/env python
 import os
+import sys
 import time
 import glob
+import filecmp
+import shutil
+import signal
+import traceback
+from argparse import ArgumentParser
+from subprocess import check_call
+from multiprocessing import Pool
 #
 # Script to move all drf directories from fast disk to slower permanent storage.
 #
 # This reduces the amount of dropped packets with usrps to a bare minimum and
 # also isolates the disk latency from the recording better.
-# 
+#
 # (c) 2015 Juha Vierinen
-# 
+# (c) 2016 Ryan Volz
+#
 # For example, you can use a ram disk as a fast fisk.
 #
 # sudo mkdir -p /ram
 # sudo mkdir -p /data0
 # sudo mount -t tmpfs -o size=4000m tmpfs /ram
 #
-ramfs="/ram/ringbuffer"
-hdfs="/data0/persistent"
-# get subdirectories
+parser = ArgumentParser()
+parser.add_argument('ramdir', nargs='?', default='/ram/ringbuffer',
+    help='RAM buffer directory',
+)
+parser.add_argument('savedir', nargs='?', default='/data0/persistent',
+    help='Persistent data directory',
+)
 
-def move_files():
-    # go through each directory on ramfs
-    dirs = next(os.walk(ramfs))[1]
-    for d in dirs:
-        # create directory on persistent drive
-        print("copying %s"%(d))
-        if not os.path.isdir("%s/%s"%(hdfs,d)):
-            print("creating dir")
-            os.system("mkdir -p %s/%s"%(hdfs,d))
+args = parser.parse_args()
 
-        # copy all metadata to persistent drive
-        os.system("cp %s/%s/*.h5 %s/%s/"%(ramfs,d,hdfs,d))
-        
-        # go through all subdirectories in temporal order
-        subdirs = next(os.walk("%s/%s"%(ramfs,d)))[1]
-        subdirs.sort()
-        n_subdirs = len(subdirs)
+ramfs = os.path.normpath(args.ramdir)
+hdfs = os.path.normpath(args.savedir)
 
-        for idx,s in enumerate(subdirs):
-            # create identical directory on persistent drive
-            print("%s %d/%d"%(s,idx,n_subdirs))
-            if not os.path.isdir("%s/%s/%s"%(hdfs,d,s)):
-                print("creating dir")
-                dir_fl = glob.glob("%s/%s/%s/*"%(ramfs,d,s))
-                # create directory on slow filesystem if there are files in subdirectory
-                if len(dir_fl) > 0:
-                    os.system("mkdir -p %s/%s/%s"%(hdfs,d,s))
+if not os.path.isdir(ramfs):
+    raise ValueError('RAM buffer directory does not exist!')
+if not os.path.isdir(hdfs):
+    os.makedirs(hdfs)
 
-            h5ls = glob.glob("%s/%s/%s/*.h5"%(ramfs,d,s))
-            h5ls.sort()
+def move_channel(d):
+    srcdir = os.path.join(ramfs, d)
+    destdir = os.path.join(hdfs, d)
 
-            # if latest directory, leave last two files alone, because they
-            # might still be written to.
-            if idx == (n_subdirs-1):
-                print("last file %s"%(h5ls[len(h5ls)-1]))
-                if len(h5ls) < 3:
-                    h5ls = []
-                else:
-                    h5ls = h5ls[0:(len(h5ls)-2)]
-            # move all files (except the last two files of newest directory) to
-            # persistent drive
-            for h5 in h5ls:
-                print("cp %s %s/%s/%s/"%(h5,hdfs,d,s))
-                os.system("cp %s %s/%s/%s/"%(h5,hdfs,d,s))
-                print("rm %s"%(h5))
-                os.system("rm %s"%(h5))
+    # create directory on persistent drive
+    if not os.path.isdir(destdir):
+        os.mkdir(destdir)
+        shutil.copystat(srcdir, destdir)
 
-# indefinitely repeat shoveling operation
-while True:
-    move_files()
-    time.sleep(1)
+    # copy all metadata to persistent drive
+    for mdpath in glob.iglob(os.path.join(srcdir, '*.h5')):
+        mdname = os.path.basename(mdpath)
+        destpath = os.path.join(destdir, mdname)
+        if not os.path.exists(destpath) or not filecmp.cmp(mdpath, destpath):
+            check_call(('cp', '-a', mdpath, destpath))
 
+    # go through all subdirectories in temporal order
+    subnames = os.listdir(srcdir)
+    subdirs = [n for n in subnames if os.path.isdir(os.path.join(srcdir, n))]
+    subdirs.sort()
+    n_subdirs = len(subdirs)
 
+    for idx, s in enumerate(subdirs):
+        srcsubdir = os.path.join(srcdir, s)
+        destsubdir = os.path.join(destdir, s)
+
+        # create identical directory on persistent drive if non-empty
+        if os.listdir(srcsubdir) and not os.path.isdir(destsubdir):
+            os.mkdir(destsubdir)
+            shutil.copystat(srcsubdir, destsubdir)
+
+        h5ls = glob.glob(os.path.join(srcsubdir, '*.h5'))
+        h5ls.sort()
+
+        # if latest directory, leave last two files alone, because they
+        # might still be written to.
+        if idx == (n_subdirs - 1):
+            if len(h5ls) < 3:
+                h5ls = []
+            else:
+                h5ls = h5ls[0:-2]
+
+        # move all files (except the last two files of newest directory) to
+        # persistent drive
+        for h5 in h5ls:
+            sys.stdout.write('*')
+            sys.stdout.flush()
+            check_call(('cp', '-a', h5, destsubdir))
+            os.remove(h5)
+
+        # if not latest directory, then it should be empty and we can remove it
+        if idx != (n_subdirs - 1):
+            try:
+                os.rmdir(srcsubdir)
+            except OSError:
+                # if it's not empty, continue anyway
+                pass
+
+def run_move_channel(d):
+    try:
+        return move_channel(d)
+    except:
+        raise Exception(''.join(traceback.format_exception(*sys.exc_info())))
+
+# ignore interrupts in each worker process
+def init_worker():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+pool = Pool(initializer=init_worker)
+try:
+    # indefinitely repeat shoveling operation
+    while True:
+        sys.stdout.write('.')
+        sys.stdout.flush()
+        # go through each directory on ramfs
+        names = os.listdir(ramfs)
+        dirs = [n for n in names if os.path.isdir(os.path.join(ramfs, n))]
+        pool.map(run_move_channel, dirs)
+        time.sleep(1)
+except KeyboardInterrupt:
+    pool.terminate()
