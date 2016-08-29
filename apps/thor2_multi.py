@@ -3,7 +3,7 @@
 # Record data from synchronized USRPs in DigitalRF format.
 #
 # (c) 2014 Juha Vierinen
-# (c) 2015 Ryan Volz
+# (c) 2015-2016 Ryan Volz
 #
 from __future__ import print_function
 from gnuradio import gr
@@ -13,8 +13,8 @@ from gnuradio.filter import firdes
 
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from textwrap import fill, dedent, TextWrapper
-from itertools import cycle, islice, repeat
-import sys, time, os, math, re, glob, numpy, datetime, pytz, subprocess
+from itertools import chain, cycle, islice, repeat
+import sys, time, os, math, re, glob, numpy, datetime, pytz, subprocess, ast
 import dateutil.parser
 
 import drf, sampler_util
@@ -23,7 +23,7 @@ first_file_idx = 0
 
 print('THOR version 2.0 (The Haystack Observatory Recorder)\n')
 print('(c) 2014 Juha Vierinen')
-print('(c) 2015 Ryan Volz\n\n')
+print('(c) 2015-2016 Ryan Volz\n\n')
 
 scriptname = os.path.basename(sys.argv[0])
 
@@ -74,15 +74,15 @@ parser.add_argument('dir',
 
 parser.add_argument('-m', '--mainboard', dest='mboards', action='append',
                     help='''Mainboard address.
-                            (default: "192.168.10.x" for x = 2,3,4)''')
+                            (default: first device found)''')
 
 parser.add_argument('-d', '--subdevice', dest='subdevs', action='append',
                     help='''USRP subdevice string.
-                            (default: "A:A A:B")''')
+                            (default: "A:A")''')
 
 parser.add_argument('-c', '--channel', dest='chs', action='append',
                     help='''Channel names to use in data directory.
-                            (default: "lX,dX" for X = A,B,C)''')
+                            (default: "ch0")''')
 
 parser.add_argument('-f', '--centerfreq', dest='centerfreqs', action='append',
                     help='''Center frequency.
@@ -92,10 +92,14 @@ parser.add_argument('-g', '--gain', dest='gains', action='append',
                     help='''Gain in dB.
                             (default: 0)''')
 
-parser.add_argument('-a', '--args', dest='stream_args',
-                    default='',
-                    help='''Common stream args, e.g. "peak=0.125,fullscale=1.0".
+parser.add_argument('--devargs', dest='dev_args', action='append',
+                    default=['recv_buff_size=100000000'],
+                    help='''Device arguments, e.g. "master_clock_rate=30e6".
                             (default: %(default)s)''')
+
+parser.add_argument('-a', '--streamargs', dest='stream_args', action='append',
+                    help='''Stream arguments, e.g. "peak=0.125,fullscale=1.0".
+                            (default: '')''')
 
 parser.add_argument('-r', '--samplerate', dest='samplerate',
                     default='1e6',
@@ -128,6 +132,10 @@ parser.add_argument('-n', '--filesize', dest='filesize',
                     help='''File size in samples.
                             (default: %(default)s)''')
 
+parser.add_argument('--metadata', action='append', metavar='{KEY}={VALUE}',
+                    help='''Key, value metadata pairs to include with data.
+                            (default: "")''')
+
 parser.add_argument('--stop_on_dropped', dest='stop_on_dropped', action='store_true',
                     help='''Stop on dropped packet.
                             (default: %(default)s)''')
@@ -143,15 +151,22 @@ parser.add_argument('--realtime', dest='realtime', action='store_true',
 op = parser.parse_args()
 
 if op.mboards is None:
-    op.mboards = ['192.168.10.2', '192.168.10.3', '192.168.10.4']
+    # use empty string for unspecified motherboard because we want len(op.mboards)==1
+    op.mboards = ['']
 if op.subdevs is None:
-    op.subdevs = ['A:A A:B']
+    op.subdevs = ['A:A']
 if op.chs is None:
-    op.chs = ['lA,dA', 'lB,dB', 'lC,dC']
+    op.chs = ['ch0']
 if op.centerfreqs is None:
     op.centerfreqs = ['15e6']
 if op.gains is None:
     op.gains = ['0']
+if op.dev_args is None:
+    op.dev_args = []
+if op.stream_args is None:
+    op.stream_args = []
+if op.metadata is None:
+    op.metadata = []
 
 # separate any combined arguments
 # e.g. op.mboards = ['192.168.10.2,192.168.10.3'] becomes ['192.168.10.2', '192.168.10.3']
@@ -160,6 +175,9 @@ op.subdevs = [a.strip() for arg in op.subdevs for a in arg.strip().split(',')]
 op.chs = [a.strip() for arg in op.chs for a in arg.strip().split(',')]
 op.centerfreqs = [float(a.strip()) for arg in op.centerfreqs for a in arg.strip().split(',')]
 op.gains = [float(a.strip()) for arg in op.gains for a in arg.strip().split(',')]
+op.dev_args = [a.strip() for arg in op.dev_args for a in arg.strip().split(',')]
+op.stream_args = [a.strip() for arg in op.stream_args for a in arg.strip().split(',')]
+op.metadata = [a.strip() for arg in op.metadata for a in arg.strip().split(',')]
 
 # repeat arguments as necessary
 nmboards = len(op.mboards)
@@ -171,14 +189,51 @@ op.gains = list(islice(cycle(op.gains), 0, nchs))
 # evaluate samplerate to float
 op.samplerate = eval(op.samplerate)
 
-print('Main boards: ',op.mboards)
+# create device_addr string to identify the requested device(s)
+mboard_strs = []
+for n, mb in enumerate(op.mboards):
+    if not mb:
+        break
+    elif re.match(r'.+=.+', mb):
+        idtype, mb = mb.split('=')
+    elif re.match(r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}', mb):
+        idtype = 'addr'
+    elif re.match(r'[0-9]{1,}', mb):
+        idtype = 'serial'
+    elif re.match(r'usrp[123]', mb) or re.match(r'b2[01]0', mb) or re.match(r'x3[01]0', mb):
+        idtype = 'type'
+    else:
+        idtype = 'name'
+    s = '{idtype}{n}={mb}'.format(idtype=idtype, n=n, mb=mb.strip())
+    mboard_strs.append(s)
+
+# convert metadata strings to a dictionary
+metadata_dict = {}
+for a in op.metadata:
+    try:
+        k, v = a.split('=')
+    except ValueError:
+        k = None
+        v = a
+    try:
+        v = ast.literal_eval(v)
+    except ValueError:
+        pass
+    if k is None:
+        metadata_dict.setdefault('metadata', []).append(v)
+    else:
+        metadata_dict[k] = v
+
+print('Main boards: ',mboard_strs)
 print('Subdevices: ',op.subdevs)
 print('Channel names: ',op.chs)
 print('Frequency: ',op.centerfreqs)
 print('Gain: ',op.gains)
+print('Device arguments: ',op.dev_args)
 print('Stream arguments: ',op.stream_args)
 print('Sample rate: ',op.samplerate)
 print('Data dir: ',op.dir)
+print('Metadata: ',metadata_dict)
 
 # sanity check, number of total subdevs should be same as number of channels
 mboards_bychan = []
@@ -200,18 +255,17 @@ if op.realtime:
        print('Note: failed to enable realtime scheduling')
 
 # create usrp source block
-mboard_addrstr = ','.join(['addr{0}={1}'.format(n, s.strip()) for n, s in enumerate(op.mboards)])
 if op.dec > 1:
     cpu_format = 'fc32'
 else:
     cpu_format = 'sc16'
 u = uhd.usrp_source(
-   device_addr='%s,recv_buff_size=100000000'%(mboard_addrstr),
+   device_addr=','.join(chain(mboard_strs, op.dev_args)),
    stream_args=uhd.stream_args(
       cpu_format=cpu_format,
       otw_format='sc16',
       channels=range(nchs),
-      args=op.stream_args))
+      args=','.join(op.stream_args)))
 
 if not op.nosync:
    u.set_clock_source('external', uhd.ALL_MBOARDS)
@@ -259,8 +313,12 @@ print('Launch time: ', st)
 if not op.nosync:
    u.set_start_time(uhd.time_spec(st))
 
-if st >= et0:
+if et0 is not None and st >= et0:
     raise ValueError('End time is before launch time!')
+
+# create data directory so ringbuffer code can be started while waiting to launch
+if not os.path.isdir(op.dir):
+    os.makedirs(op.dir)
 
 # wait for the start time if it is not past
 while (st - time.time()) > 10:
@@ -293,7 +351,7 @@ if op.dec > 1:
 
     lpfs = [filter.freq_xlating_fir_filter_ccf(op.dec,taps,0.0,op.samplerate) for k in range(nchs)]
     dsts = [drf.digital_rf(
-                d, int(op.filesize), int(3600),
+                d, int(op.filesize), 0,
                 gr.sizeof_gr_complex, op.samplerate/op.dec, 0, op.stop_on_dropped,
             ) for d in dirs]
 
@@ -303,13 +361,16 @@ if op.dec > 1:
         sampler_util.write_metadata_drf(
             dirs[k], 1, [op.centerfreqs[k]], st,
             dtype='<f4', itemsize=gr.sizeof_gr_complex, sr=op.samplerate/op.dec,
-            extra_keys=['usrp_ip', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'],
-            extra_values=[mboards_bychan[k], subdevs_bychan[k],
-                          op.gains[k], op.stream_args],
+            extra_keys=metadata_dict.keys() + [
+                'usrp_id', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'
+            ],
+            extra_values=metadata_dict.values() + [
+                mboards_bychan[k], subdevs_bychan[k], op.gains[k], op.stream_args
+            ],
         )
 else:
     dsts = [drf.digital_rf(
-                d, int(op.filesize), int(3600),
+                d, int(op.filesize), 0,
                 2*gr.sizeof_short, op.samplerate, 0, op.stop_on_dropped,
             ) for d in dirs]
 
@@ -319,9 +380,12 @@ else:
         sampler_util.write_metadata_drf(
             dirs[k], 1, [op.centerfreqs[k]], st,
             dtype='<i2', itemsize=2*gr.sizeof_short, sr=op.samplerate,
-            extra_keys=['usrp_ip', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'],
-            extra_values=[mboards_bychan[k], subdevs_bychan[k],
-                          op.gains[k], op.stream_args],
+            extra_keys=metadata_dict.keys() + [
+                'usrp_id', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'
+            ],
+            extra_values=metadata_dict.values() + [
+                mboards_bychan[k], subdevs_bychan[k], op.gains[k], op.stream_args
+            ],
         )
 
 fg.start()
