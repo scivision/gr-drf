@@ -260,19 +260,35 @@ if op.dec > 1:
 else:
     cpu_format = 'sc16'
 u = uhd.usrp_source(
-   device_addr=','.join(chain(mboard_strs, op.dev_args)),
-   stream_args=uhd.stream_args(
-      cpu_format=cpu_format,
-      otw_format='sc16',
-      channels=range(nchs),
-      args=','.join(op.stream_args)))
+    device_addr=','.join(chain(mboard_strs, op.dev_args)),
+    stream_args=uhd.stream_args(
+        cpu_format=cpu_format,
+        otw_format='sc16',
+        channels=range(nchs),
+        args=','.join(op.stream_args)
+    ),
+)
 
 if not op.nosync:
-   u.set_clock_source('external', uhd.ALL_MBOARDS)
-   u.set_time_source('external', uhd.ALL_MBOARDS)
+    # try sync sources and test by waiting for pps
+    for source in ['external', 'gpsdo']:
+        try:
+            u.set_clock_source(source, uhd.ALL_MBOARDS)
+            u.set_time_source(source, uhd.ALL_MBOARDS)
+        except RuntimeError:
+            continue
+
+        t0 = u.get_time_last_pps(0).to_ticks(1)
+        time.sleep(1)
+        if u.get_time_last_pps(0).to_ticks(1) != t0:
+            synced = True
+            print('Using {0} ref/PPS for synchronization.'.format(source))
+            break
+    else:
+        raise RuntimeError('No PPS signal detected. Run with --nosync?')
 
 if op.filesize == None:
-   op.filesize=op.samplerate/op.dec
+    op.filesize=op.samplerate/op.dec
 
 for mb_num in range(nmboards):
     u.set_subdev_spec(op.subdevs[mb_num], mb_num)
@@ -283,9 +299,9 @@ for ch_num in range(nchs):
     u.set_gain(op.gains[ch_num], ch_num)
 
 if op.stop_on_dropped == True:
-   op.stop_on_dropped = 1
+    op.stop_on_dropped = 1
 else:
-   op.stop_on_dropped = 0
+    op.stop_on_dropped = 0
 
 # print current time and NTP status
 subprocess.call(('timedatectl', 'status'))
@@ -334,11 +350,11 @@ while tt-math.floor(tt) < 0.2 or tt-math.floor(tt) > 0.3:
     tt = time.time()
 print('Latching at '+str(tt))
 if not op.nosync:
-   # waits for the next pps to happen (at time math.ceil(tt))
-   # then sets the time for the subsequent pps (at time math.ceil(tt) + 1.0)
-   u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt)+1.0))
+    # waits for the next pps to happen (at time math.ceil(tt))
+    # then sets the time for the subsequent pps (at time math.ceil(tt) + 1.0)
+    u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt)+1.0))
 else:
-   u.set_time_now(uhd.time_spec(tt))
+    u.set_time_now(uhd.time_spec(tt))
 # wait 1 sec to ensure the time registers are in a known state
 time.sleep(1)
 
