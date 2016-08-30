@@ -310,8 +310,7 @@ else:
 # find next suitable launch time
 st = sampler_util.find_next(st0, op.period)
 print('Launch time: ', st)
-if not op.nosync:
-   u.set_start_time(uhd.time_spec(st))
+u.set_start_time(uhd.time_spec(st))
 
 if et0 is not None and st >= et0:
     raise ValueError('End time is before launch time!')
@@ -322,7 +321,7 @@ if not os.path.isdir(op.dir):
 
 # wait for the start time if it is not past
 while (st - time.time()) > 10:
-    print("Standby %ld remaining..." % (st - time.time()))
+    print("Standby %ld s remaining..." % (st - time.time()))
     sys.stdout.flush()
     time.sleep(1)
 
@@ -331,11 +330,17 @@ while (st - time.time()) > 10:
 # uhdsampler.py
 tt = time.time()
 while tt-math.floor(tt) < 0.2 or tt-math.floor(tt) > 0.3:
-    tt = time.time()
     time.sleep(0.01)
+    tt = time.time()
 print('Latching at '+str(tt))
 if not op.nosync:
+   # waits for the next pps to happen (at time math.ceil(tt))
+   # then sets the time for the subsequent pps (at time math.ceil(tt) + 1.0)
    u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt)+1.0))
+else:
+   u.set_time_now(uhd.time_spec(tt))
+# wait 1 sec to ensure the time registers are in a known state
+time.sleep(1)
 
 # create flowgraph
 fg = gr.top_block()
