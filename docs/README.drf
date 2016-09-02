@@ -1,6 +1,6 @@
-This is the drf-write-a-block package meant as a guide to building
-out-of-tree packages. To use the drf blocks, the Python namespaces
-is in 'drf', which is imported as:
+The gr-drf module is useful for interacting with HDF5 files in the
+Digital RF format. To use the drf blocks, the Python namespaces is
+in 'drf', which is imported as:
 
     import drf
 
