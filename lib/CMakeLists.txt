@@ -24,11 +24,9 @@ include(GrPlatform) #define LIB_SUFFIX
 
 include_directories(${Boost_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS} ${HDF5_LIBRARY_DIRS})
-
 list(APPEND drf_sources
     digital_rf_sink_impl.cc
-    dddc_impl.cc
-)
+    )
 
 set(drf_sources "${drf_sources}" PARENT_SCOPE)
 if(NOT drf_sources)
