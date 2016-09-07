@@ -44,6 +44,7 @@ namespace gr {
       bool d_stop_on_dropped_packet;
 
       Digital_rf_write_object *drf;
+      hid_t dtype;
       uint64_t t0; // start time floored to nearest second in samples from unix epoch
       uint64_t _t0; // start time in samples from unix epoch
       uint64_t local_index;
