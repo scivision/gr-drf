@@ -1,16 +1,22 @@
-title: The DRF OOT Module
-brief: Short description of gr-drf
-tags: # Tags are arbitrary, but look at CGRAN what other authors are using
-  - sdr
+title: gr-drf
+brief: Digital RF module for GNU Radio
+tags:
+  - recording
+  - HDF5
 author:
-  - Author Name <authors@email.address>
+  - Ryan Volz <rvolz@mit.edu>
 copyright_owner:
-  - Copyright Owner 1
-license:
-#repo: # Put the URL of the repository here, or leave blank for default
+  - Juha Vierinen
+  - Ryan Volz
+dependencies:
+  - gnuradio, digital_rf
+license: GPLv3
+repo: https://github.com/ryanvolz/gr-drf
 #website: <module_website> # If you have a separate project website, put it here
 #icon: <icon_url> # Put a URL to a square image here that will be used as an icon on CGRAN
 ---
-A longer, multi-line description of gr-drf.
-You may use some *basic* Markdown here.
-If left empty, it will try to find a README file instead.
+Read and write files in Digital RF format of HDF5 using GNU Radio.
+
+Digital RF is a disk storage and archival format for radio signals. It uses HDF5
+files with embedded metadata and a predictable naming scheme to produce a self-
+describing data format suitable to a variety of use cases.
