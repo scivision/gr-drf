@@ -6,18 +6,28 @@
 # (c) 2015-2016 Ryan Volz
 #
 from __future__ import print_function
+
+import sys
+import os
+import math
+import re
+import time
+import datetime
+import dateutil.parser
+import pytz
+import numpy as np
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from textwrap import fill, dedent, TextWrapper
+from itertools import chain, cycle, islice, repeat
+from ast import literal_eval
+from subprocess import call
 from gnuradio import gr
 from gnuradio import uhd
 from gnuradio import filter
 from gnuradio.filter import firdes
 
-from argparse import ArgumentParser, RawDescriptionHelpFormatter
-from textwrap import fill, dedent, TextWrapper
-from itertools import chain, cycle, islice, repeat
-import sys, time, os, math, re, glob, numpy, datetime, pytz, subprocess, ast
-import dateutil.parser
-
-import drf, sampler_util
+import drf
+import digital_metadata as dmd
 
 first_file_idx = 0
 
@@ -221,7 +231,7 @@ for a in op.metadata:
         k = None
         v = a
     try:
-        v = ast.literal_eval(v)
+        v = literal_eval(v)
     except ValueError:
         pass
     if k is None:
@@ -306,28 +316,31 @@ else:
     op.stop_on_dropped = 0
 
 # print current time and NTP status
-subprocess.call(('timedatectl', 'status'))
+call(('timedatectl', 'status'))
 
 # parse time arguments as very last thing before launching
 if op.starttime is None:
-    st0 = math.ceil(time.time())
+    st0 = int(math.ceil(time.time())) + 3
 else:
     dtst0 = dateutil.parser.parse(op.starttime)
-    st0 = (dtst0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds()
+    st0 = int((dtst0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
 
-    print("Start time: %s (%ld) at %ld" % (dtst0.strftime('%a %b %d %H:%M:%S %Y'),st0,time.time()))
+    print('Start time: %s (%d)' % (dtst0.strftime('%a %b %d %H:%M:%S %Y'), st0))
 
 if op.endtime is None:
     et0 = None
 else:
     dtet0 = dateutil.parser.parse(op.endtime)
-    et0 = (dtet0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds()
+    et0 = int((dtet0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
 
-    print("End time: %s (%ld) at %ld" % (dtet0.strftime('%a %b %d %H:%M:%S %Y'),et0,time.time()))
+    print('End time: %s (%d)' % (dtet0.strftime('%a %b %d %H:%M:%S %Y'), et0))
 
 # find next suitable launch time
-st = sampler_util.find_next(st0, op.period)
-print('Launch time: ', st)
+soon = int(math.ceil(time.time()))
+periods_until_next = (max(soon - st0, 0) - 1)//op.period + 1
+st = st0 + periods_until_next*op.period
+dtst = datetime.datetime.utcfromtimestamp(st)
+print('Launch time: %s (%d)' % (dtst.strftime('%a %b %d %H:%M:%S %Y'), st))
 u.set_start_time(uhd.time_spec(st))
 
 if et0 is not None and st >= et0:
@@ -339,7 +352,7 @@ if not os.path.isdir(op.dir):
 
 # wait for the start time if it is not past
 while (st - time.time()) > 10:
-    print("Standby %ld s remaining..." % (st - time.time()))
+    print('Standby %d s remaining...' % (st - time.time()))
     sys.stdout.flush()
     time.sleep(1)
 
@@ -382,15 +395,33 @@ if op.dec > 1:
     for k in range(nchs):
         fg.connect((u, k), (lpfs[k], 0), (dsts[k], 0))
 
-        sampler_util.write_metadata_drf(
-            dirs[k], 1, [op.centerfreqs[k]], st,
-            dtype='<f4', itemsize=gr.sizeof_gr_complex, sr=op.samplerate/op.dec,
-            extra_keys=metadata_dict.keys() + [
-                'usrp_id', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'
-            ],
-            extra_values=metadata_dict.values() + [
-                mboards_bychan[k], subdevs_bychan[k], op.gains[k], op.stream_args
-            ],
+        # create metadata dir, dmd object, and write channel metadata
+        md_dir = os.path.join(dirs[k], 'metadata')
+        os.makedirs(md_dir)
+        mdo = dmd.write_digital_metadata(
+            metadata_dir=md_dir,
+            subdirectory_cadence_seconds=op.subdir_cadence_s,
+            file_cadence_seconds=op.subdir_cadence_s,
+            samples_per_second=op.samplerate,
+            file_name='metadata',
+        )
+        md = metadata_dict.copy()
+        md.update(
+            sample_rate=float(op.samplerate/op.dec),
+            sample_period_ps=int(1000000000000/int(op.samplerate/op.dec)),
+            center_frequencies=np.array([op.centerfreqs[k]]),
+            t0=st,
+            n_channels=1,
+            itemsize=gr.sizeof_gr_complex,
+            dtype='<f4',
+            usrp_id=mboards_bychan[k],
+            usrp_subdev=subdevs_bychan[k],
+            usrp_gain=op.gains[k],
+            usrp_stream_args=op.stream_args,
+        )
+        mdo.write(
+            samples=0,
+            data_dict=md,
         )
 else:
     dsts = [drf.digital_rf(
@@ -402,15 +433,33 @@ else:
     for k in range(nchs):
         fg.connect((u, k), (dsts[k], 0))
 
-        sampler_util.write_metadata_drf(
-            dirs[k], 1, [op.centerfreqs[k]], st,
-            dtype='<i2', itemsize=2*gr.sizeof_short, sr=op.samplerate,
-            extra_keys=metadata_dict.keys() + [
-                'usrp_id', 'usrp_subdev', 'usrp_gain', 'usrp_stream_args'
-            ],
-            extra_values=metadata_dict.values() + [
-                mboards_bychan[k], subdevs_bychan[k], op.gains[k], op.stream_args
-            ],
+        # create metadata dir, dmd object, and write channel metadata
+        md_dir = os.path.join(dirs[k], 'metadata')
+        os.makedirs(md_dir)
+        mdo = dmd.write_digital_metadata(
+            metadata_dir=md_dir,
+            subdirectory_cadence_seconds=op.subdir_cadence_s,
+            file_cadence_seconds=op.subdir_cadence_s,
+            samples_per_second=op.samplerate,
+            file_name='metadata',
+        )
+        md = metadata_dict.copy()
+        md.update(
+            sample_rate=float(op.samplerate),
+            sample_period_ps=int(1000000000000/int(op.samplerate)),
+            center_frequencies=np.array([op.centerfreqs[k]]),
+            t0=st,
+            n_channels=1,
+            itemsize=2*gr.sizeof_short,
+            dtype='<i2',
+            usrp_id=mboards_bychan[k],
+            usrp_subdev=subdevs_bychan[k],
+            usrp_gain=op.gains[k],
+            usrp_stream_args=op.stream_args,
+        )
+        mdo.write(
+            samples=0,
+            data_dict=md,
         )
 
 fg.start()
