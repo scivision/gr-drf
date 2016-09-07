@@ -123,6 +123,7 @@
   <check>$vlen > 0</check>
   <check>$subdir_cadence_s > 0</check>
   <check>$file_cadence_ms > 0</check>
+  <check>$subdir_cadence_s*1000 % $file_cadence_ms == 0</check>
 
   <sink>
     <name>in</name>
@@ -133,20 +134,15 @@
   <doc>
 Write data in Digital RF format.
 
-An 'rx_time' stream tag is used to indicate the sample time whenever a
-break in the input data occurs, including for the first sample. The tag
-value takes the form of a Unix time (secs, frac) tuple where 'secs' is
-the integer seconds since the epoch and 'frac' is the float fractional
-seconds since the whole second. UHD data is tagged in this way by default.
+An 'rx_time' stream tag is used to indicate the sample time whenever a break in the input data occurs, including for the first sample. The tag value takes the form of a Unix time (secs, frac) tuple where 'secs' is the integer seconds since the epoch and 'frac' is the float fractional seconds since the whole second. UHD data is tagged in this way by default.
 
-Directory --- Directory to write to.
-Input Type --- Size and type of the input samples.
-Vec Length --- Vector length of the input. Each sample of the vector will
-    be written to a different subchannel.
-Subdir Cadence (s) --- Number of seconds of data per subdirectory.
-File Cadence (ms) --- Number of milliseconds of data per file.
-Sample Rate --- Number of samples per second.
-UUID --- Unique ID to associate with this data, for pairing metadata.
-Stop on Dropped Packet --- If True, stop when a packet is dropped.
+- Directory --- Directory to write to.
+- Input Type --- Size and type of the input samples.
+- Vec Length --- Vector length of the input. Each sample of the vector will be written to a different subchannel.
+- Subdir Cadence (s) --- Number of seconds of data per subdirectory.
+- File Cadence (ms) --- Number of milliseconds of data per file.
+- Sample Rate --- Number of samples per second.
+- UUID --- Unique ID to associate with this data, for pairing metadata.
+- Stop on Dropped Packet --- If True, stop when a packet is dropped.
   </doc>
 </block>
