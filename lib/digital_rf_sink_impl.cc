@@ -243,8 +243,10 @@ namespace gr {
                 d_sample_rate, d_uuid, 0, 0, d_is_complex, d_num_subchannels,
                 1, 1);
         if(!drf)
-          printf("Failed to create Digital RF writer object\n"
+        {
+          printf("Failed to create Digital RF writer object\n");
           exit(-1);
+        }
         printf("done\n");
         first = 0;
       }
