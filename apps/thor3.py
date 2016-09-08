@@ -405,7 +405,7 @@ if op.dec > 1:
         md.update(
             sample_rate=float(op.samplerate/op.dec),
             sample_period_ps=int(1000000000000/(op.samplerate/op.dec)),
-            center_frequencies=np.array([op.centerfreqs[k]]),
+            center_frequencies=np.array([op.centerfreqs[k]]).reshape((1, -1)),
             t0=st,
             n_channels=1,
             itemsize=gr.sizeof_gr_complex,
@@ -413,7 +413,7 @@ if op.dec > 1:
             usrp_id=mboards_bychan[k],
             usrp_subdev=subdevs_bychan[k],
             usrp_gain=op.gains[k],
-            usrp_stream_args=op.stream_args,
+            usrp_stream_args=','.join(op.stream_args),
         )
         mdo.write(
             samples=int(st*op.samplerate),
@@ -444,7 +444,7 @@ else:
         md.update(
             sample_rate=float(op.samplerate),
             sample_period_ps=int(1000000000000/op.samplerate),
-            center_frequencies=np.array([op.centerfreqs[k]]),
+            center_frequencies=np.array([op.centerfreqs[k]]).reshape((1, -1)),
             t0=st,
             n_channels=1,
             itemsize=2*gr.sizeof_short,
@@ -452,7 +452,7 @@ else:
             usrp_id=mboards_bychan[k],
             usrp_subdev=subdevs_bychan[k],
             usrp_gain=op.gains[k],
-            usrp_stream_args=op.stream_args,
+            usrp_stream_args=','.join(op.stream_args),
         )
         mdo.write(
             samples=int(st*op.samplerate),
