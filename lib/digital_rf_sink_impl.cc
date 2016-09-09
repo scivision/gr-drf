@@ -145,28 +145,6 @@ namespace gr {
       free(d_zero_buffer);
     }
 
-    bool
-    digital_rf_sink_impl::start()
-    {
-      // set state to start a new writer instance
-      d_first = 1;
-      // update start sample index based on previous written (if any from stop)
-      // just in case there are no new time tags (implying continuous data)
-      d_t0s += d_local_index + d_total_dropped;
-      d_t0 += d_local_index + d_total_dropped;
-      d_local_index = 0;
-      d_total_dropped = 0;
-      return true;
-    }
-
-    bool
-    digital_rf_sink_impl::stop()
-    {
-      // close existing writer instance
-      digital_rf_close_write_hdf5(d_drfo);
-      return true;
-    }
-
 
     void
     digital_rf_sink_impl::get_rx_time(int n)
