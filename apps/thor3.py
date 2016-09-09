@@ -397,7 +397,7 @@ if op.dec > 1:
         mdo = dmd.write_digital_metadata(
             metadata_dir=md_dir,
             subdirectory_cadence_seconds=op.subdir_cadence_s,
-            file_cadence_seconds=op.subdir_cadence_s,
+            file_cadence_seconds=1,
             samples_per_second=op.samplerate,
             file_name='metadata',
         )
@@ -416,7 +416,7 @@ if op.dec > 1:
             usrp_stream_args=','.join(op.stream_args),
         )
         mdo.write(
-            samples=int(st*op.samplerate),
+            samples=int(st*op.samplerate/op.dec),
             data_dict=md,
         )
 else:
@@ -436,7 +436,7 @@ else:
         mdo = dmd.write_digital_metadata(
             metadata_dir=md_dir,
             subdirectory_cadence_seconds=op.subdir_cadence_s,
-            file_cadence_seconds=op.subdir_cadence_s,
+            file_cadence_seconds=1,
             samples_per_second=op.samplerate,
             file_name='metadata',
         )
