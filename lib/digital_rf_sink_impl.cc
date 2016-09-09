@@ -239,21 +239,24 @@ namespace gr {
           return WORK_DONE;
         }
 
-        // if we've dropped packets, write zeros
-        while(dropped > 0) {
-          if(dropped*d_sample_size*d_num_subchannels <= ZERO_BUFFER_SIZE) {
-            filled = dropped;
-          }
-          else {
-            filled = ZERO_BUFFER_SIZE/d_sample_size/d_num_subchannels;
-          }
-          result = digital_rf_write_hdf5(d_drfo, d_local_index, d_zero_buffer, filled);
-          if(result) {
-            throw std::runtime_error("Nonzero result on write");
-          }
-          d_local_index += filled;
-          dropped -= filled;
-        }
+//        // if we've dropped packets, write zeros
+//        while(dropped > 0) {
+//          if(dropped*d_sample_size*d_num_subchannels <= ZERO_BUFFER_SIZE) {
+//            filled = dropped;
+//          }
+//          else {
+//            filled = ZERO_BUFFER_SIZE/d_sample_size/d_num_subchannels;
+//          }
+//          result = digital_rf_write_hdf5(d_drfo, d_local_index, d_zero_buffer, filled);
+//          if(result) {
+//            throw std::runtime_error("Nonzero result on write");
+//          }
+//          d_local_index += filled;
+//          dropped -= filled;
+//        }
+        // advance sample index by number of dropped packets
+        // (dropped samples will have HDF5 fill value if not written to)
+        d_local_index += filled;
       }
       return(consumed);
     }
