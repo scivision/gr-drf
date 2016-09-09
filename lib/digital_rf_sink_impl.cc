@@ -201,9 +201,10 @@ namespace gr {
       std::vector<gr::tag_t> rx_time_tags;
       uint64_t dt;
       int dropped = 0;
+      uint64_t drop_index;
+      int result;
       int consumed = 0;
       int filled;
-      int result;
 
       get_tags_in_range(rx_time_tags, 0, start, end, pmt::string_to_symbol("rx_time"));
 
@@ -220,20 +221,21 @@ namespace gr {
               - (int64_t)d_t0 - (int64_t)d_total_dropped);
 
         dropped = dt - offset;
+        // get sample index of drop (as opposed to packet index == offset)
+        drop_index = offset + d_total_dropped;
         d_total_dropped += dropped;
-        printf("\nDropped %u packet(s) @ %lu, total_dropped %d\n",
-               (int)dropped, offset + d_total_dropped - dropped,
-               (int)d_total_dropped);
+        printf("\nDropped %u packet(s) @ %lu, total_dropped %lu\n",
+               dropped, drop_index, d_total_dropped);
 
-        // write in-sequence data up to offset
+        // write in-sequence data up to drop_index
         result = digital_rf_write_hdf5(d_drfo, d_local_index,
                                        in + consumed*d_sample_size*d_num_subchannels,
-                                       offset - d_local_index);
+                                       drop_index - d_local_index);
         if(result) {
           throw std::runtime_error("Nonzero result on write");
         }
-        consumed += offset - d_local_index;
-        d_local_index = offset;
+        consumed += drop_index - d_local_index;
+        d_local_index = drop_index;
 
         if(d_stop_on_dropped_packet && dropped > 0) {
           printf("Stopping as requested\n");
