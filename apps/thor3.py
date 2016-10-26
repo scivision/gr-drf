@@ -102,8 +102,12 @@ parser.add_argument('-g', '--gain', dest='gains', action='append',
                     help='''Gain in dB.
                             (default: 0)''')
 
+parser.add_argument('-y', '--antenna', dest='antennas', action='append',
+                    help='''Name of antenna to select on the frontend.
+                            (default: frontend default))''')
+
 parser.add_argument('--devargs', dest='dev_args', action='append',
-                    default=['recv_buff_size=100000000'],
+                    default=['recv_buff_size=100000000', 'num_recv_frames=512'],
                     help='''Device arguments, e.g. "master_clock_rate=30e6".
                             (default: %(default)s)''')
 
@@ -176,6 +180,8 @@ if op.centerfreqs is None:
     op.centerfreqs = ['15e6']
 if op.gains is None:
     op.gains = ['0']
+if op.antennas is None:
+    op.antennas = ['']
 if op.dev_args is None:
     op.dev_args = []
 if op.stream_args is None:
@@ -190,6 +196,7 @@ op.subdevs = [a.strip() for arg in op.subdevs for a in arg.strip().split(',')]
 op.chs = [a.strip() for arg in op.chs for a in arg.strip().split(',')]
 op.centerfreqs = [float(a.strip()) for arg in op.centerfreqs for a in arg.strip().split(',')]
 op.gains = [float(a.strip()) for arg in op.gains for a in arg.strip().split(',')]
+op.antennas = [a.strip() for arg in op.antennas for a in arg.strip().split(',')]
 op.dev_args = [a.strip() for arg in op.dev_args for a in arg.strip().split(',')]
 op.stream_args = [a.strip() for arg in op.stream_args for a in arg.strip().split(',')]
 op.metadata = [a.strip() for arg in op.metadata for a in arg.strip().split(',')]
@@ -200,6 +207,7 @@ nchs = len(op.chs)
 op.subdevs = list(islice(cycle(op.subdevs), 0, nmboards))
 op.centerfreqs = list(islice(cycle(op.centerfreqs), 0, nchs))
 op.gains = list(islice(cycle(op.gains), 0, nchs))
+op.antennas = list(islice(cycle(op.antennas), 0, nchs))
 
 # evaluate samplerate to float
 op.samplerate = float(eval(op.samplerate))
@@ -244,6 +252,7 @@ print('Subdevices: ',op.subdevs)
 print('Channel names: ',op.chs)
 print('Frequency: ',op.centerfreqs)
 print('Gain: ',op.gains)
+print('Antenna: ',op.antennas)
 print('Device arguments: ',op.dev_args)
 print('Stream arguments: ',op.stream_args)
 print('Sample rate: ',op.samplerate)
@@ -287,15 +296,18 @@ u = uhd.usrp_source(
 if not op.nosync:
     # try sync sources and test by waiting for pps
     for source in ['external', 'gpsdo']:
+        print('Trying to detect PPS from {0} source.'.format(source))
         try:
             u.set_clock_source(source, uhd.ALL_MBOARDS)
             u.set_time_source(source, uhd.ALL_MBOARDS)
         except RuntimeError:
             continue
 
+        # get time of pps, wait, again, and if they differ then we have PPS
         t0 = u.get_time_last_pps(0).to_ticks(1)
-        time.sleep(1)
-        if u.get_time_last_pps(0).to_ticks(1) != t0:
+        time.sleep(1.5)
+        t1 = u.get_time_last_pps(0).to_ticks(1)
+        if t1 != t0:
             synced = True
             print('Using {0} ref/PPS for synchronization.'.format(source))
             break
@@ -309,13 +321,30 @@ op.samplerate = u.get_samp_rate() # may be different than desired
 for ch_num in range(nchs):
     u.set_center_freq(op.centerfreqs[ch_num], ch_num)
     u.set_gain(op.gains[ch_num], ch_num)
+    u.set_bandwidth(op.samplerate, ch_num)
+    ant = op.antennas[ch_num]
+    if ant != '':
+        try:
+            u.set_antenna(ant, ch_num)
+        except RuntimeError:
+            raise ValueError(
+                'Unknown RX antenna option: {0}. Must be one of {1}.'.format(
+                    ant, u.get_antennas(ch_num),
+                )
+            )
+
+# force creation of the RX streamer ahead of time with a
+# finite acquisition (after setting time/clock sources,
+# before setting the device time)
+# this fixes timing with the B210
+u.finite_acquisition_v(16384)
 
 # print current time and NTP status
 call(('timedatectl', 'status'))
 
 # parse time arguments as very last thing before launching
 if op.starttime is None:
-    st0 = int(math.ceil(time.time())) + 3
+    st0 = int(math.ceil(time.time())) + 5
 else:
     dtst0 = dateutil.parser.parse(op.starttime)
     st0 = int((dtst0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
@@ -365,6 +394,8 @@ if not op.nosync:
     u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt)+1.0))
 else:
     u.set_time_now(uhd.time_spec(tt))
+# reset device stream and flush buffer to clear leftovers from finite_acquisition
+u.stop()
 # wait 1 sec to ensure the time registers are in a known state
 time.sleep(1)
 
