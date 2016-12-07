@@ -15,6 +15,7 @@ import time
 import datetime
 import dateutil.parser
 import pytz
+import pprint
 import numpy as np
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from textwrap import fill, dedent, TextWrapper
@@ -201,6 +202,15 @@ op.dev_args = [a.strip() for arg in op.dev_args for a in arg.strip().split(',')]
 op.stream_args = [a.strip() for arg in op.stream_args for a in arg.strip().split(',')]
 op.metadata = [a.strip() for arg in op.metadata for a in arg.strip().split(',')]
 
+# remove redundant arguments in dev_args and stream_args
+try:
+    dev_args_dict = dict([a.split('=') for a in op.dev_args])
+    stream_args_dict = dict([a.split('=') for a in op.stream_args])
+except ValueError:
+    raise ValueError('Device and stream arguments must be {KEY}={VALUE} pairs.')
+op.dev_args = ['{0}={1}'.format(k, v) for k, v in dev_args_dict.iteritems()]
+op.stream_args = ['{0}={1}'.format(k, v) for k, v in stream_args_dict.iteritems()]
+
 # repeat arguments as necessary
 nmboards = len(op.mboards)
 nchs = len(op.chs)
@@ -216,6 +226,7 @@ op.samplerate = float(eval(op.samplerate))
 mboard_strs = []
 for n, mb in enumerate(op.mboards):
     if not mb:
+        print('*** Automatically choosing first available device ***')
         break
     elif re.match(r'.+=.+', mb):
         idtype, mb = mb.split('=')
@@ -227,7 +238,11 @@ for n, mb in enumerate(op.mboards):
         idtype = 'type'
     else:
         idtype = 'name'
-    s = '{idtype}{n}={mb}'.format(idtype=idtype, n=n, mb=mb.strip())
+    if len(op.mboards) == 1:
+        # do not use identifier numbering if only using one mainboard
+        s = '{idtype}={mb}'.format(idtype=idtype, mb=mb.strip())
+    else:
+        s = '{idtype}{n}={mb}'.format(idtype=idtype, n=n, mb=mb.strip())
     mboard_strs.append(s)
 
 # convert metadata strings to a dictionary
@@ -332,6 +347,13 @@ for ch_num in range(nchs):
                     ant, u.get_antennas(ch_num),
                 )
             )
+
+print('Using the following devices:')
+for ch_num in range(nchs):
+    info = dict(u.get_usrp_info(chan=ch_num))
+    print('-- {0} --'.format(op.chs[ch_num]))
+    pprint.pprint(info, indent=2)
+    print('----')
 
 # force creation of the RX streamer ahead of time with a
 # finite acquisition (after setting time/clock sources,
