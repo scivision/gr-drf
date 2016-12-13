@@ -20,11 +20,17 @@
 %}
 
 %typemap(in) long double {
+    PyObject* obj;
     npy_longdouble val;
     PyArray_Descr* longdoubleDescr = PyArray_DescrNewFromType(NPY_LONGDOUBLE);
 
     if (PyArray_CheckScalar($input)) {
-        PyArray_CastScalarToCtype($input, &val, longdoubleDescr);
+        if (PyArray_IsZeroDim($input)) {
+            obj = PyArray_Return((PyArrayObject*)$input);
+        } else {
+            obj = $input;
+        }
+        PyArray_CastScalarToCtype(obj, &val, longdoubleDescr);
         $1 = (long double) val;
     } else if (PyFloat_Check($input)) {
         $1 = (long double) PyFloat_AsDouble($input);
