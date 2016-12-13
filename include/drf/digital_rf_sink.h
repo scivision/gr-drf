@@ -44,7 +44,7 @@ namespace gr {
        */
       static sptr make(char *dir, size_t sample_size,
                        uint64_t subdir_cadence_s, uint64_t file_cadence_ms,
-                       double sample_rate, char* uuid, bool is_complex,
+                       long double sample_rate, char* uuid, bool is_complex,
                        int num_subchannels, bool stop_on_dropped_packet);
     };
 
