@@ -13,13 +13,14 @@
 #include "drf/digital_rf_sink.h"
 %}
 
-%typemap(in) long double {
+%typemap(in) long double (npy_longdouble val) {
     //PyArray_Descr * longdoubleDescr = PyArray_DescrNewFromType(NPY_LONGDOUBLE);
 
     if (PyArray_IsScalar($input, LongDouble)) {
     //if (PyArray_CheckAnyScalar($input)) {
-        PyArray_ScalarAsCtype($input, &$1);
+        PyArray_ScalarAsCtype($input, &val);
         //PyArray_CastScalarToCtype($input, &$1, longdoubleDescr);
+        $1 = (long double) val;
     } else {
         SWIG_exception(SWIG_TypeError, "numpy longdouble expected");
     }
