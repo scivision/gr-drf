@@ -333,6 +333,7 @@ for mb_num in range(nmboards):
     u.set_subdev_spec(op.subdevs[mb_num], mb_num)
 u.set_samp_rate(op.samplerate)
 op.samplerate = u.get_samp_rate() # may be different than desired
+op.samplerate = np.longdouble(op.samplerate)
 for ch_num in range(nchs):
     u.set_center_freq(op.centerfreqs[ch_num], ch_num)
     u.set_gain(op.gains[ch_num], ch_num)

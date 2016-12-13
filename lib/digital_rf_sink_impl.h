@@ -37,7 +37,7 @@ namespace gr {
       size_t d_sample_size;
       uint64_t d_subdir_cadence_s;
       uint64_t d_file_cadence_ms;
-      double d_sample_rate;
+      long double d_sample_rate;
       char d_uuid[512];
       bool d_is_complex;
       int d_num_subchannels;
@@ -59,7 +59,7 @@ namespace gr {
      public:
       digital_rf_sink_impl(char *dir, size_t sample_size,
                            uint64_t subdir_cadence_s, uint64_t file_cadence_ms,
-                           double sample_rate, char* uuid, bool is_complex,
+                           long double sample_rate, char* uuid, bool is_complex,
                            int num_subchannels, bool stop_on_dropped_packet);
       ~digital_rf_sink_impl();
 

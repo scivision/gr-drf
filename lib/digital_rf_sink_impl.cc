@@ -38,7 +38,7 @@ namespace gr {
     digital_rf_sink::sptr
     digital_rf_sink::make(char *dir, size_t sample_size,
                           uint64_t subdir_cadence_s, uint64_t file_cadence_ms,
-                          double sample_rate, char *uuid, bool is_complex,
+                          long double sample_rate, char *uuid, bool is_complex,
                           int num_subchannels, bool stop_on_dropped_packet)
     {
       return gnuradio::get_initial_sptr
@@ -54,7 +54,7 @@ namespace gr {
      */
     digital_rf_sink_impl::digital_rf_sink_impl(
             char *dir, size_t sample_size, uint64_t subdir_cadence_s,
-            uint64_t file_cadence_ms, double sample_rate, char* uuid,
+            uint64_t file_cadence_ms, long double sample_rate, char* uuid,
             bool is_complex, int num_subchannels, bool stop_on_dropped_packet
     )
       : gr::sync_block("digital_rf_sink",
@@ -121,7 +121,7 @@ namespace gr {
 
       strcpy(d_uuid, uuid);
 
-      printf("subdir_cadence_s %lu file_cadence_ms %lu sample_size %d rate %1.2f\n",
+      printf("subdir_cadence_s %lu file_cadence_ms %lu sample_size %d rate %1.2Lf\n",
              subdir_cadence_s, file_cadence_ms, (int)sample_size, sample_rate);
 
       d_zero_buffer = (char *)malloc(ZERO_BUFFER_SIZE*sizeof(char));
@@ -130,7 +130,6 @@ namespace gr {
       }
 
       d_first = 1;
-      d_t0s = 1;
       d_t0 = 1;
       d_local_index = 0;
       d_total_dropped = 0;
@@ -164,10 +163,9 @@ namespace gr {
 
         t0_sec = pmt::to_uint64(pmt::tuple_ref(value, 0));
         t0_frac = pmt::to_double(pmt::tuple_ref(value, 1));
-        d_t0s = (uint64_t)(d_sample_rate*t0_sec);
-        d_t0 = ((uint64_t)(((uint64_t)d_sample_rate)*((uint64_t)t0_sec)
-               +((uint64_t)(d_sample_rate*t0_frac))));
-        printf("Time tag @ %lu, %ld\n", offset, d_t0s);
+        d_t0 = (uint64_t)(d_sample_rate*t0_sec)
+                + (uint64_t)(d_sample_rate*t0_frac);
+        printf("Time tag @ %lu, %ld\n", offset, d_t0);
       }
     }
 
@@ -198,7 +196,7 @@ namespace gr {
         drop_index = offset + d_total_dropped;
 
         // we should have this many samples
-        dt = (((int64_t)d_sample_rate)*tt0_sec + (int64_t)(tt0_frac*d_sample_rate)
+        dt = ((int64_t)(d_sample_rate*tt0_sec) + (int64_t)(d_sample_rate*tt0_frac)
               - (int64_t)d_t0 - (int64_t)d_total_dropped);
 
         dropped = dt - offset;
@@ -251,22 +249,22 @@ namespace gr {
       int samples_consumed = 0;
 
       if(d_first) {
-        // sets start time d_t0s
+        // sets start time d_t0
         get_rx_time(noutput_items);
 
-        printf("Creating %s t0 %ld\n", d_dir, d_t0s);
+        printf("Creating %s t0 %ld\n", d_dir, d_t0);
         fflush(stdout);
         /*      Digital_rf_write_object * digital_rf_create_write_hdf5(
                     char * directory, hid_t dtype_id, uint64_t subdir_cadence_secs,
                     uint64_t file_cadence_millisecs, uint64_t global_start_sample,
-                    double sample_rate, char * uuid_str,
+                    long double sample_rate, char * uuid_str,
                     int compression_level, int checksum, int is_complex,
                     int num_subchannels, int is_continuous, int marching_dots
                 )
         */
         d_drfo = digital_rf_create_write_hdf5(
-                d_dir, d_dtype, d_subdir_cadence_s, d_file_cadence_ms, d_t0s,
-                d_sample_rate, d_uuid, 0, 0, d_is_complex, d_num_subchannels,
+                d_dir, d_dtype, d_subdir_cadence_s, d_file_cadence_ms, d_t0,
+                (double)d_sample_rate, d_uuid, 0, 0, d_is_complex, d_num_subchannels,
                 1, 1);
         if(!d_drfo) {
           throw std::runtime_error("Failed to create Digital RF writer object");
