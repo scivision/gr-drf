@@ -14,12 +14,12 @@
 %}
 
 %typemap(in) long double {
-    PyArray_Descr * longdoubleDescr = PyArray_DescrNewFromType(NPY_LONGDOUBLE);
+    //PyArray_Descr * longdoubleDescr = PyArray_DescrNewFromType(NPY_LONGDOUBLE);
 
-    //if (PyArray_IsScalar($input, LongDouble)) {
-    if (PyArray_CheckAnyScalar($input)) {
-        //PyArray_ScalarAsCtype($input, &$1);
-        PyArray_CastScalarToCtype($input, &$1, longdoubleDescr);
+    if (PyArray_IsScalar($input, LongDouble)) {
+    //if (PyArray_CheckAnyScalar($input)) {
+        PyArray_ScalarAsCtype($input, &$1);
+        //PyArray_CastScalarToCtype($input, &$1, longdoubleDescr);
     } else {
         SWIG_exception(SWIG_TypeError, "numpy longdouble expected");
     }
