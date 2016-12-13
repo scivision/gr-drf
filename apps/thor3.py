@@ -333,7 +333,6 @@ for mb_num in range(nmboards):
     u.set_subdev_spec(op.subdevs[mb_num], mb_num)
 u.set_samp_rate(op.samplerate)
 op.samplerate = u.get_samp_rate() # may be different than desired
-op.samplerate = np.longdouble(op.samplerate)
 for ch_num in range(nchs):
     u.set_center_freq(op.centerfreqs[ch_num], ch_num)
     u.set_gain(op.gains[ch_num], ch_num)
@@ -437,7 +436,7 @@ if op.dec > 1:
     lpfs = [filter.freq_xlating_fir_filter_ccf(op.dec,taps,0.0,op.samplerate) for k in range(nchs)]
     dsts = [drf.digital_rf_sink(
                 d, gr.sizeof_gr_complex, op.subdir_cadence_s, op.file_cadence_ms,
-                op.samplerate/op.dec, 'THIS_UUID_LACKS_ENTROPY', True, 1,
+                np.longdouble(op.samplerate/op.dec), 'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,
             ) for d in dirs]
 
@@ -476,7 +475,7 @@ if op.dec > 1:
 else:
     dsts = [drf.digital_rf_sink(
                 d, 2*gr.sizeof_short, op.subdir_cadence_s, op.file_cadence_ms,
-                op.samplerate, 'THIS_UUID_LACKS_ENTROPY', True, 1,
+                np.longdouble(op.samplerate), 'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,
             ) for d in dirs]
 
