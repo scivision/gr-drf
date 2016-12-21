@@ -264,7 +264,7 @@ namespace gr {
         */
         d_drfo = digital_rf_create_write_hdf5(
                 d_dir, d_dtype, d_subdir_cadence_s, d_file_cadence_ms, d_t0,
-                (double)d_sample_rate, d_uuid, 0, 0, d_is_complex, d_num_subchannels,
+                d_sample_rate, d_uuid, 0, 0, d_is_complex, d_num_subchannels,
                 1, 1);
         if(!d_drfo) {
           throw std::runtime_error("Failed to create Digital RF writer object");

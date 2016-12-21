@@ -332,11 +332,15 @@ if not op.nosync:
 for mb_num in range(nmboards):
     u.set_subdev_spec(op.subdevs[mb_num], mb_num)
 u.set_samp_rate(op.samplerate)
-op.samplerate = u.get_samp_rate() # may be different than desired
+samplerate = u.get_samp_rate() # may be different than desired
+# calculate longdouble precision sample rate (integer division of clock rate)
+cr = u.get_clock_rate()
+srdec = int(round(cr/samplerate))
+samplerate_ld = np.longdouble(cr)/srdec
 for ch_num in range(nchs):
     u.set_center_freq(op.centerfreqs[ch_num], ch_num)
     u.set_gain(op.gains[ch_num], ch_num)
-    u.set_bandwidth(op.samplerate, ch_num)
+    u.set_bandwidth(samplerate, ch_num)
     ant = op.antennas[ch_num]
     if ant != '':
         try:
@@ -427,16 +431,16 @@ fg = gr.top_block()
 dirs = [os.path.join(op.dir, ch) for ch in op.chs]
 if op.dec > 1:
     taps = firdes.low_pass_2(1.0,
-                             op.samplerate,
-                             op.samplerate/op.dec/2.0,
-                             0.2*(op.samplerate/op.dec),
+                             samplerate,
+                             samplerate/op.dec/2.0,
+                             0.2*(samplerate/op.dec),
                              80.0,
                              window=firdes.WIN_BLACKMAN_hARRIS)
 
-    lpfs = [filter.freq_xlating_fir_filter_ccf(op.dec,taps,0.0,op.samplerate) for k in range(nchs)]
+    lpfs = [filter.freq_xlating_fir_filter_ccf(op.dec,taps,0.0,samplerate) for k in range(nchs)]
     dsts = [drf.digital_rf_sink(
                 d, gr.sizeof_gr_complex, op.subdir_cadence_s, op.file_cadence_ms,
-                np.longdouble(op.samplerate/op.dec), 'THIS_UUID_LACKS_ENTROPY', True, 1,
+                samplerate_ld/op.dec, 'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,
             ) for d in dirs]
 
@@ -451,13 +455,13 @@ if op.dec > 1:
             metadata_dir=md_dir,
             subdirectory_cadence_seconds=op.subdir_cadence_s,
             file_cadence_seconds=1,
-            samples_per_second=op.samplerate,
+            samples_per_second=samplerate_ld,
             file_name='metadata',
         )
         md = metadata_dict.copy()
         md.update(
-            sample_rate=float(op.samplerate/op.dec),
-            sample_period_ps=int(1000000000000/(op.samplerate/op.dec)),
+            sample_rate=samplerate_ld/op.dec,
+            sample_period_ps=1000000000000*op.dec/samplerate_ld,
             center_frequencies=np.array([op.centerfreqs[k]]).reshape((1, -1)),
             t0=st,
             n_channels=1,
@@ -469,13 +473,13 @@ if op.dec > 1:
             usrp_stream_args=','.join(op.stream_args),
         )
         mdo.write(
-            samples=int(st*op.samplerate/op.dec),
+            samples=int(st*samplerate_ld/op.dec),
             data_dict=md,
         )
 else:
     dsts = [drf.digital_rf_sink(
                 d, 2*gr.sizeof_short, op.subdir_cadence_s, op.file_cadence_ms,
-                np.longdouble(op.samplerate), 'THIS_UUID_LACKS_ENTROPY', True, 1,
+                samplerate_ld, 'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,
             ) for d in dirs]
 
@@ -490,13 +494,13 @@ else:
             metadata_dir=md_dir,
             subdirectory_cadence_seconds=op.subdir_cadence_s,
             file_cadence_seconds=1,
-            samples_per_second=op.samplerate,
+            samples_per_second=samplerate_ld,
             file_name='metadata',
         )
         md = metadata_dict.copy()
         md.update(
-            sample_rate=float(op.samplerate),
-            sample_period_ps=int(1000000000000/op.samplerate),
+            sample_rate=samplerate_ld,
+            sample_period_ps=1000000000000/samplerate_ld,
             center_frequencies=np.array([op.centerfreqs[k]]).reshape((1, -1)),
             t0=st,
             n_channels=1,
@@ -508,7 +512,7 @@ else:
             usrp_stream_args=','.join(op.stream_args),
         )
         mdo.write(
-            samples=int(st*op.samplerate),
+            samples=int(st*samplerate_ld),
             data_dict=md,
         )
 
