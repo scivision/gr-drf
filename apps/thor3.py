@@ -111,6 +111,10 @@ parser.add_argument('-g', '--gain', dest='gains', action='append',
                     help='''Gain in dB.
                             (default: 0)''')
 
+parser.add_argument('-b', '--bandwidth', dest='bandwidths', action='append',
+                    help='''Frontend bandwidth in Hz.
+                            (default: 0 == frontend default)''')
+
 parser.add_argument('-y', '--antenna', dest='antennas', action='append',
                     help='''Name of antenna to select on the frontend.
                             (default: frontend default))''')
@@ -196,6 +200,8 @@ if op.centerfreqs is None:
     op.centerfreqs = ['15e6']
 if op.gains is None:
     op.gains = ['0']
+if op.bandwidths is None:
+    op.bandwidths = ['0'] # use 0 bandwidth as special case to set frontend default
 if op.antennas is None:
     op.antennas = ['']
 if op.dev_args is None:
@@ -212,6 +218,7 @@ op.subdevs = [a.strip() for arg in op.subdevs for a in arg.strip().split(',')]
 op.chs = [a.strip() for arg in op.chs for a in arg.strip().split(',')]
 op.centerfreqs = [float(a.strip()) for arg in op.centerfreqs for a in arg.strip().split(',')]
 op.gains = [float(a.strip()) for arg in op.gains for a in arg.strip().split(',')]
+op.bandwidths = [float(a.strip()) for arg in op.bandwidths for a in arg.strip().split(',')]
 op.antennas = [a.strip() for arg in op.antennas for a in arg.strip().split(',')]
 op.dev_args = [a.strip() for arg in op.dev_args for a in arg.strip().split(',')]
 op.stream_args = [a.strip() for arg in op.stream_args for a in arg.strip().split(',')]
@@ -232,6 +239,7 @@ nchs = len(op.chs)
 op.subdevs = list(islice(cycle(op.subdevs), 0, nmboards))
 op.centerfreqs = list(islice(cycle(op.centerfreqs), 0, nchs))
 op.gains = list(islice(cycle(op.gains), 0, nchs))
+op.bandwidths = list(islice(cycle(op.bandwidths), 0, nchs))
 op.antennas = list(islice(cycle(op.antennas), 0, nchs))
 
 # evaluate samplerate to float
@@ -282,6 +290,7 @@ print('Subdevices: ',op.subdevs)
 print('Channel names: ',op.chs)
 print('Frequency: ',op.centerfreqs)
 print('Gain: ',op.gains)
+print('Bandwidth: ',op.bandwidths)
 print('Antenna: ',op.antennas)
 print('Device arguments: ',op.dev_args)
 print('Stream arguments: ',op.stream_args)
@@ -382,7 +391,9 @@ op.samplerate = u.get_samp_rate() # may be different than desired
 for ch_num in range(nchs):
     u.set_center_freq(op.centerfreqs[ch_num], ch_num)
     u.set_gain(op.gains[ch_num], ch_num)
-    u.set_bandwidth(op.samplerate, ch_num)
+    bw = op.bandwidths[ch_num]
+    if bw:
+        u.set_bandwidth(bw, ch_num)
     ant = op.antennas[ch_num]
     if ant != '':
         try:
