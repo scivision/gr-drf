@@ -160,6 +160,10 @@ parser.add_argument('--stop_on_dropped', dest='stop_on_dropped', action='store_t
                     help='''Stop on dropped packet.
                             (default: %(default)s)''')
 
+parser.add_argument('--sync_source', dest='sync_source', default='external',
+                    help='''Clock and time source for all mainboards.
+                            (default: %(default)s)''')
+
 parser.add_argument('--nosync', dest='nosync', action='store_true',
                     help='''No syncing with external clock.
                             (default: %(default)s)''')
@@ -309,25 +313,15 @@ u = uhd.usrp_source(
 )
 
 if not op.nosync:
-    # try sync sources and test by waiting for pps
-    for source in ['external', 'gpsdo']:
-        print('Trying to detect PPS from {0} source.'.format(source))
-        try:
-            u.set_clock_source(source, uhd.ALL_MBOARDS)
-            u.set_time_source(source, uhd.ALL_MBOARDS)
-        except RuntimeError:
-            continue
-
-        # get time of pps, wait, again, and if they differ then we have PPS
-        t0 = u.get_time_last_pps(0).to_ticks(1)
-        time.sleep(1.5)
-        t1 = u.get_time_last_pps(0).to_ticks(1)
-        if t1 != t0:
-            synced = True
-            print('Using {0} ref/PPS for synchronization.'.format(source))
-            break
-    else:
-        raise RuntimeError('No PPS signal detected. Run with --nosync?')
+    try:
+        u.set_clock_source(op.sync_source, uhd.ALL_MBOARDS)
+        u.set_time_source(op.sync_source, uhd.ALL_MBOARDS)
+    except RuntimeError:
+        raise ValueError(
+            'Unknown sync_source option: {0}. Must be one of {1}.'.format(
+                op.sync_source, u.get_clock_sources(0),
+            )
+        )
 
 for mb_num in range(nmboards):
     u.set_subdev_spec(op.subdevs[mb_num], mb_num)
