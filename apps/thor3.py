@@ -17,7 +17,7 @@ import dateutil.parser
 import pytz
 import pprint
 import numpy as np
-from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from argparse import ArgumentParser, RawDescriptionHelpFormatter, Namespace
 from textwrap import fill, dedent, TextWrapper
 from itertools import chain, cycle, islice, repeat
 from ast import literal_eval
@@ -31,237 +31,354 @@ import drf
 import digital_metadata as dmd
 
 
-def main(op):
-    if op.realtime:
-        r = gr.enable_realtime_scheduling()
+class Thor(object):
+    def __init__(self, datadir, **kwargs):
+        options = dict(
+            mboards=[], subdevs=['A:A'],
+            chs=['ch0'], centerfreqs=[100e6], gains=[0], bandwidths=[0],
+            antennas=[''],
+            samplerate=1e6, dec=1,
+            dev_args=['recv_buff_size=100000000', 'num_recv_frames=512'],
+            stream_args=[],
+            sync=True, sync_source='external',
+            stop_on_dropped=False, realtime=False,
+            file_cadence_ms=1000, subdir_cadence_s=3600, metadata={},
+            verbose=True, test_settings=True,
+        )
+        options.update(kwargs)
+        options['datadir'] = datadir
+        #FIXME: rewrite so options are in __init__ signature
+        # then use introspection to group all kwargs as options dict
+        self.op = self._parse_options(**options)
 
-        if r == gr.RT_OK:
-           print('Realtime scheduling enabled')
+        # test usrp device settings, release device when done
+        if op.test_settings:
+            u = self._usrp_setup()
+            if op.verbose:
+                print('Using the following devices:')
+                for ch_num in range(op.nchs):
+                    info = dict(u.get_usrp_info(chan=ch_num))
+                    header = '---- {0} '.format(op.chs[ch_num])
+                    header += '-'*(78 - len(header))
+                    print(header)
+                    pprint.pprint(info, indent=2)
+                    print('-'*78)
+            del u
+
+        # create flowgraph
+        self.fg = gr.top_block()
+        self.et = None
+
+    @staticmethod
+    def _parse_options(**kwargs):
+        """Put all keyword options in a namespace and normalize them."""
+        op = Namespace(**kwargs)
+
+        op.nmboards = len(op.mboards) if len(op.mboards) > 0 else 1
+        op.nchs = len(op.chs)
+        # repeat arguments as necessary
+        op.subdevs = list(islice(cycle(op.subdevs), 0, op.nmboards))
+        op.centerfreqs = list(islice(cycle(op.centerfreqs), 0, op.nchs))
+        op.gains = list(islice(cycle(op.gains), 0, op.nchs))
+        op.bandwidths = list(islice(cycle(op.bandwidths), 0, op.nchs))
+        op.antennas = list(islice(cycle(op.antennas), 0, op.nchs))
+
+        # create device_addr string to identify the requested device(s)
+        op.mboard_strs = []
+        for n, mb in enumerate(op.mboards):
+            if re.match(r'[^0-9]+=.+', mb):
+                idtype, mb = mb.split('=')
+            elif re.match(
+                r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}', mb
+            ):
+                idtype = 'addr'
+            elif re.match(r'[0-9]{1,}', mb):
+                idtype = 'serial'
+            elif (
+                re.match(r'usrp[123]', mb) or re.match(r'b2[01]0', mb)
+                or re.match(r'x3[01]0', mb)
+            ):
+                idtype = 'type'
+            else:
+                idtype = 'name'
+            if len(op.mboards) == 1:
+                # do not use identifier numbering if only using one mainboard
+                s = '{type}={mb}'.format(type=idtype, mb=mb.strip())
+            else:
+                s = '{type}{n}={mb}'.format(type=idtype, n=n, mb=mb.strip())
+            op.mboard_strs.append(s)
+
+        if op.verbose:
+            print('Main boards: ', op.mboard_strs)
+            print('Subdevices: ', op.subdevs)
+            print('Channel names: ', op.chs)
+            print('Frequency: ', op.centerfreqs)
+            print('Gain: ', op.gains)
+            print('Bandwidth: ', op.bandwidths)
+            print('Antenna: ', op.antennas)
+            print('Device arguments: ', op.dev_args)
+            print('Stream arguments: ', op.stream_args)
+            print('Sample rate: ', op.samplerate)
+            print('Data dir: ', op.datadir)
+            print('Metadata: ', op.metadata)
+
+        # sanity check: # of total subdevs should be same as # of channels
+        op.mboards_bychan = []
+        op.subdevs_bychan = []
+        mboards = op.mboards if op.mboards else ['default']
+        for mb, sd in zip(mboards, op.subdevs):
+            sds = sd.split()
+            mbs = list(repeat(mb, len(sds)))
+            op.mboards_bychan.extend(mbs)
+            op.subdevs_bychan.extend(sds)
+        if len(op.subdevs_bychan) != op.nchs:
+            raise ValueError(
+                '''Number of device channels does not match the number of
+                   channel names provided'''
+            )
+
+        return op
+
+    def _usrp_setup(self):
+        """Create, set up, and return USRP source object."""
+        op = self.op
+        # create usrp source block
+        if op.dec > 1:
+            cpu_format = 'fc32'
         else:
-           print('Note: failed to enable realtime scheduling')
+            cpu_format = 'sc16'
+        u = uhd.usrp_source(
+            device_addr=','.join(chain(op.mboard_strs, op.dev_args)),
+            stream_args=uhd.stream_args(
+                cpu_format=cpu_format,
+                otw_format='sc16',
+                channels=range(len(op.chs)),
+                args=','.join(op.stream_args)
+            ),
+        )
 
+        # set clock and time source if synced
+        if op.sync:
+            try:
+                u.set_clock_source(op.sync_source, uhd.ALL_MBOARDS)
+                u.set_time_source(op.sync_source, uhd.ALL_MBOARDS)
+            except RuntimeError:
+                errstr = 'Unknown sync_source option: {0}. Must be one of {1}.'
+                errstr = errstr.format(op.sync_source, u.get_clock_sources(0))
+                raise ValueError(errstr)
 
-    # print current time and NTP status
-    call(('timedatectl', 'status'))
+        # set mainboard options
+        for mb_num in range(op.nmboards):
+            u.set_subdev_spec(op.subdevs[mb_num], mb_num)
+        # set global options
+        u.set_samp_rate(op.samplerate)
+        op.samplerate = u.get_samp_rate()  # may be different than desired
+        # set per-channel options
+        for ch_num in range(op.nchs):
+            u.set_center_freq(op.centerfreqs[ch_num], ch_num)
+            u.set_gain(op.gains[ch_num], ch_num)
+            bw = op.bandwidths[ch_num]
+            if bw:
+                u.set_bandwidth(bw, ch_num)
+            ant = op.antennas[ch_num]
+            if ant != '':
+                try:
+                    u.set_antenna(ant, ch_num)
+                except RuntimeError:
+                    errstr = 'Unknown RX antenna option: {0}.'
+                    errstr += ' Must be one of {1}.'
+                    errstr = errstr.format(ant, u.get_antennas(ch_num))
+                    raise ValueError(errstr)
+        return u
 
-    # parse time arguments as very last thing before launching
-    if op.starttime is None:
-        st0 = int(math.ceil(time.time())) + 5
-    else:
-        dtst0 = dateutil.parser.parse(op.starttime)
-        st0 = int((dtst0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
+    def start(self, starttime, endtime, period=10):
+        op = self.op
 
-        print('Start time: %s (%d)' % (dtst0.strftime('%a %b %d %H:%M:%S %Y'), st0))
+        # print current time and NTP status
+        if op.verbose:
+            call(('timedatectl', 'status'))
 
-    if op.endtime is None:
-        et0 = None
-    else:
-        dtet0 = dateutil.parser.parse(op.endtime)
-        et0 = int((dtet0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
+        # parse time arguments
+        if starttime is None:
+            # start time now-ish if no time given
+            # use 5 seconds to allow time for latching
+            st0 = int(math.ceil(time.time())) + 5
+        else:
+            dtst0 = dateutil.parser.parse(starttime)
+            epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
+            st0 = int((dtst0 - epoch).total_seconds())
 
-        print('End time: %s (%d)' % (dtet0.strftime('%a %b %d %H:%M:%S %Y'), et0))
+            if op.verbose:
+                dtststr = dtst0.strftime('%a %b %d %H:%M:%S %Y')
+                print('Start time: {0} ({1})'.format(dtststr, st0))
 
-    # find next suitable launch time
-    soon = int(math.ceil(time.time()))
-    periods_until_next = (max(soon - st0, 0) - 1)//op.period + 1
-    st = st0 + periods_until_next*op.period
-    dtst = datetime.datetime.utcfromtimestamp(st)
-    print('Launch time: %s (%d)' % (dtst.strftime('%a %b %d %H:%M:%S %Y'), st))
+        if endtime is None:
+            et0 = None
+        else:
+            dtet0 = dateutil.parser.parse(endtime)
+            epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
+            et0 = int((dtet0 - epoch).total_seconds())
 
-    if et0 is not None and st >= et0:
-        raise ValueError('End time is before launch time!')
+            if op.verbose:
+                dtetstr = dtet0.strftime('%a %b %d %H:%M:%S %Y')
+                print('End time: {0} ({1})'.format(dtetstr, et0))
+        self.et = et0
 
-    # create data directory so ringbuffer code can be started while waiting to launch
-    if not os.path.isdir(op.dir):
-        os.makedirs(op.dir)
+        # find next suitable launch time
+        soon = int(math.ceil(time.time()))
+        periods_until_next = (max(soon - st0, 0) - 1)//period + 1
+        st = st0 + periods_until_next*period
+        dtst = datetime.datetime.utcfromtimestamp(st)
+        if op.verbose:
+            dtststr = dtst.strftime('%a %b %d %H:%M:%S %Y')
+            print('Launch time: {0} ({1})'.format(dtststr, st))
 
-    # wait for the start time if it is not past
-    while (st - time.time()) > 10:
-        print('Standby %d s remaining...' % (st - time.time()))
-        sys.stdout.flush()
+        if et0 is not None and st >= et0:
+            raise ValueError('End time is before launch time!')
+
+        if op.realtime:
+            r = gr.enable_realtime_scheduling()
+
+            if op.verbose:
+                if r == gr.RT_OK:
+                    print('Realtime scheduling enabled')
+                else:
+                    print('Note: failed to enable realtime scheduling')
+
+        # create data directory so ringbuffer code can be started while waiting
+        # to launch
+        if not os.path.isdir(op.datadir):
+            os.makedirs(op.datadir)
+
+        # wait for the start time if it is not past
+        while (st - time.time()) > 10:
+            ttl = st - time.time()
+            if (ttl % 10) == 0:
+                print('Standby {0} s remaining...'.format(ttl))
+                sys.stdout.flush()
+            time.sleep(1)
+
+        u = self._usrp_setup()
+
+        # force creation of the RX streamer ahead of time with a finite
+        # acquisition (after setting time/clock sources, before setting the
+        # device time)
+        # this fixes timing with the B210
+        u.finite_acquisition_v(16384)
+
+        u.set_start_time(uhd.time_spec(st))
+
+        # wait until time 0.2 to 0.5 past full second, then latch
+        # we have to trust NTP to be 0.2 s accurate
+        tt = time.time()
+        while tt-math.floor(tt) < 0.2 or tt-math.floor(tt) > 0.3:
+            time.sleep(0.01)
+            tt = time.time()
+        if op.verbose:
+            print('Latching at ' + str(tt))
+        if op.sync:
+            # waits for the next pps to happen
+            # (at time math.ceil(tt))
+            # then sets the time for the subsequent pps
+            # (at time math.ceil(tt) + 1.0)
+            u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt) + 1.0))
+        else:
+            u.set_time_now(uhd.time_spec(tt))
+        # reset device stream and flush buffer to clear leftovers from finite
+        # acquisition
+        u.stop()
+        # wait 1 sec to ensure the time registers are in a known state
         time.sleep(1)
 
-    # create usrp source block
-    if op.dec > 1:
-        cpu_format = 'fc32'
-    else:
-        cpu_format = 'sc16'
-    u = uhd.usrp_source(
-        device_addr=','.join(chain(mboard_strs, op.dev_args)),
-        stream_args=uhd.stream_args(
-            cpu_format=cpu_format,
-            otw_format='sc16',
-            channels=range(nchs),
-            args=','.join(op.stream_args)
-        ),
-    )
+        # get output settings that depend on decimation rate
+        samplerate_out = op.samplerate/op.dec
+        if op.dec > 1:
+            sample_size = gr.sizeof_gr_complex
+            sample_dtype = '<f4'
 
-    if not op.nosync:
-        try:
-            u.set_clock_source(op.sync_source, uhd.ALL_MBOARDS)
-            u.set_time_source(op.sync_source, uhd.ALL_MBOARDS)
-        except RuntimeError:
-            raise ValueError(
-                'Unknown sync_source option: {0}. Must be one of {1}.'.format(
-                    op.sync_source, u.get_clock_sources(0),
-                )
+            taps = firdes.low_pass_2(
+                1.0, op.samplerate, samplerate_out/2.0,
+                0.2*(samplerate_out), 80.0,
+                window=firdes.WIN_BLACKMAN_hARRIS
+            )
+        else:
+            sample_size = 2*gr.sizeof_short
+            sample_dtype = '<i2'
+
+        # populate flowgraph one channel at a time
+        for k in range(op.nchs):
+            # create digital RF sink
+            chdir = os.path.join(op.datadir, op.chs[k])
+            dst = drf.digital_rf_sink(
+                chdir, sample_size, op.subdir_cadence_s, op.file_cadence_ms,
+                samplerate_out, 'THIS_UUID_LACKS_ENTROPY', True, 1,
+                op.stop_on_dropped,
             )
 
-    for mb_num in range(nmboards):
-        u.set_subdev_spec(op.subdevs[mb_num], mb_num)
-    u.set_samp_rate(op.samplerate)
-    op.samplerate = u.get_samp_rate() # may be different than desired
-    for ch_num in range(nchs):
-        u.set_center_freq(op.centerfreqs[ch_num], ch_num)
-        u.set_gain(op.gains[ch_num], ch_num)
-        bw = op.bandwidths[ch_num]
-        if bw:
-            u.set_bandwidth(bw, ch_num)
-        ant = op.antennas[ch_num]
-        if ant != '':
-            try:
-                u.set_antenna(ant, ch_num)
-            except RuntimeError:
-                raise ValueError(
-                    'Unknown RX antenna option: {0}. Must be one of {1}.'.format(
-                        ant, u.get_antennas(ch_num),
-                    )
+            if op.dec > 1:
+                # create low-pass filter
+                lpf = filter.freq_xlating_fir_filter_ccf(
+                    op.dec, taps, 0.0, op.samplerate
                 )
 
-    print('Using the following devices:')
-    for ch_num in range(nchs):
-        info = dict(u.get_usrp_info(chan=ch_num))
-        print('-- {0} --'.format(op.chs[ch_num]))
-        pprint.pprint(info, indent=2)
-        print('----')
+                # connections for usrp->lpf->drf
+                connections = ((u, k), (lpf, 0), (dst, 0))
+            else:
+                # connections for usrp->drf
+                connections = ((u, k), (dst, 0))
 
-    # force creation of the RX streamer ahead of time with a
-    # finite acquisition (after setting time/clock sources,
-    # before setting the device time)
-    # this fixes timing with the B210
-    u.finite_acquisition_v(16384)
-
-    u.set_start_time(uhd.time_spec(st))
-
-    # wait until time 0.2 to 0.5 past full second, then latch.
-    # we have to trust NTP to be 0.2 s accurate. It might be a good idea to do a ntpdate before running
-    # uhdsampler.py
-    tt = time.time()
-    while tt-math.floor(tt) < 0.2 or tt-math.floor(tt) > 0.3:
-        time.sleep(0.01)
-        tt = time.time()
-    print('Latching at '+str(tt))
-    if not op.nosync:
-        # waits for the next pps to happen (at time math.ceil(tt))
-        # then sets the time for the subsequent pps (at time math.ceil(tt) + 1.0)
-        u.set_time_unknown_pps(uhd.time_spec(math.ceil(tt)+1.0))
-    else:
-        u.set_time_now(uhd.time_spec(tt))
-    # reset device stream and flush buffer to clear leftovers from finite_acquisition
-    u.stop()
-    # wait 1 sec to ensure the time registers are in a known state
-    time.sleep(1)
-
-    # create flowgraph
-    fg = gr.top_block()
-
-    dirs = [os.path.join(op.dir, ch) for ch in op.chs]
-    if op.dec > 1:
-        taps = firdes.low_pass_2(1.0,
-                                 op.samplerate,
-                                 op.samplerate/op.dec/2.0,
-                                 0.2*(op.samplerate/op.dec),
-                                 80.0,
-                                 window=firdes.WIN_BLACKMAN_hARRIS)
-
-        lpfs = [filter.freq_xlating_fir_filter_ccf(op.dec,taps,0.0,op.samplerate) for k in range(nchs)]
-        dsts = [drf.digital_rf_sink(
-                    d, gr.sizeof_gr_complex, op.subdir_cadence_s, op.file_cadence_ms,
-                    op.samplerate/op.dec, 'THIS_UUID_LACKS_ENTROPY', True, 1,
-                    op.stop_on_dropped,
-                ) for d in dirs]
-
-        for k in range(nchs):
-            fg.connect((u, k), (lpfs[k], 0), (dsts[k], 0))
+            # make channel connections in flowgraph
+            self.fg.connect(*connections)
 
             # create metadata dir, dmd object, and write channel metadata
-            md_dir = os.path.join(dirs[k], 'metadata')
-            if not os.path.exists(md_dir):
-                os.makedirs(md_dir)
+            mddir = os.path.join(chdir, 'metadata')
+            if not os.path.exists(mddir):
+                os.makedirs(mddir)
             mdo = dmd.write_digital_metadata(
-                metadata_dir=md_dir,
+                metadata_dir=mddir,
                 subdirectory_cadence_seconds=op.subdir_cadence_s,
                 file_cadence_seconds=1,
-                samples_per_second=op.samplerate,
+                samples_per_second=samplerate_out,
                 file_name='metadata',
             )
             md = metadata_dict.copy()
             md.update(
-                sample_rate=float(op.samplerate/op.dec),
-                sample_period_ps=int(1000000000000/(op.samplerate/op.dec)),
-                center_frequencies=np.array([op.centerfreqs[k]]).reshape((1, -1)),
+                sample_rate=float(samplerate_out),
+                sample_period_ps=int(1000000000000/samplerate_out),
+                center_frequencies=np.array(
+                    [op.centerfreqs[k]]
+                ).reshape((1, -1)),
                 t0=st,
                 n_channels=1,
-                itemsize=gr.sizeof_gr_complex,
-                dtype='<f4',
-                usrp_id=mboards_bychan[k],
-                usrp_subdev=subdevs_bychan[k],
+                itemsize=sample_size,
+                dtype=sample_dtype,
+                usrp_id=op.mboards_bychan[k],
+                usrp_subdev=op.subdevs_bychan[k],
                 usrp_gain=op.gains[k],
                 usrp_stream_args=','.join(op.stream_args),
             )
             mdo.write(
-                samples=int(st*op.samplerate/op.dec),
-                data_dict=md,
-            )
-    else:
-        dsts = [drf.digital_rf_sink(
-                    d, 2*gr.sizeof_short, op.subdir_cadence_s, op.file_cadence_ms,
-                    op.samplerate, 'THIS_UUID_LACKS_ENTROPY', True, 1,
-                    op.stop_on_dropped,
-                ) for d in dirs]
-
-        for k in range(nchs):
-            fg.connect((u, k), (dsts[k], 0))
-
-            # create metadata dir, dmd object, and write channel metadata
-            md_dir = os.path.join(dirs[k], 'metadata')
-            if not os.path.exists(md_dir):
-                os.makedirs(md_dir)
-            mdo = dmd.write_digital_metadata(
-                metadata_dir=md_dir,
-                subdirectory_cadence_seconds=op.subdir_cadence_s,
-                file_cadence_seconds=1,
-                samples_per_second=op.samplerate,
-                file_name='metadata',
-            )
-            md = metadata_dict.copy()
-            md.update(
-                sample_rate=float(op.samplerate),
-                sample_period_ps=int(1000000000000/op.samplerate),
-                center_frequencies=np.array([op.centerfreqs[k]]).reshape((1, -1)),
-                t0=st,
-                n_channels=1,
-                itemsize=2*gr.sizeof_short,
-                dtype='<i2',
-                usrp_id=mboards_bychan[k],
-                usrp_subdev=subdevs_bychan[k],
-                usrp_gain=op.gains[k],
-                usrp_stream_args=','.join(op.stream_args),
-            )
-            mdo.write(
-                samples=int(st*op.samplerate),
+                samples=int(st*samplerate_out),
                 data_dict=md,
             )
 
-    fg.start()
+        self.fg.start()
 
-    if et0 is None:
-        fg.wait()
-    else:
-        while(time.time() < et0):
-           time.sleep(1)
+    def stop(self):
+        self.fg.stop()
 
-    fg.stop()
+    def wait(self):
+        """If end time is set, wait until then. Else wait for flowgraph."""
+        if self.et is None:
+            self.fg.wait()
+        else:
+            while(time.time() < self.et):
+                time.sleep(1)
+
+    def run(self, starttime=None, endtime=None, period=10):
+        self.start(starttime, endtime, period)
+        self.wait()
+        self.stop()
 
 
 if __name__ == '__main__':
@@ -319,10 +436,19 @@ if __name__ == '__main__':
 
                    (c) 2014-2016 Massachusetts Institute of Technology''',
     )
+    parser.add_argument(
+        '-q', '--quiet', dest='verbose', action='store_false',
+        help='''Reduce text output to the screen. (default: False)''',
+    )
+    parser.add_argument(
+        '--notest', dest='test_settings', action='store_false',
+        help='''Do not test USRP settings until experiment start.
+                (default: False)''',
+    )
 
     dirgroup = parser.add_mutually_exclusive_group(required=True)
     dirgroup.add_argument(
-        'dir', nargs='?', default=None,
+        'datadir', nargs='?', default=None,
         help='''Data directory, to be filled with channel subdirectories.''',
     )
     dirgroup.add_argument(
@@ -387,17 +513,17 @@ if __name__ == '__main__':
                 (default: %(default)s)''',
     )
     recgroup.add_argument(
-        '--stop_on_dropped', dest='stop_on_dropped', action='store_true',
-        help='''Stop on dropped packet. (default: %(default)s)''',
-    )
-    recgroup.add_argument(
         '--sync_source', dest='sync_source', default='external',
         help='''Clock and time source for all mainboards.
                 (default: %(default)s)''',
     )
     recgroup.add_argument(
-        '--nosync', dest='nosync', action='store_true',
-        help='''No syncing with external clock. (default: %(default)s)''',
+        '--nosync', dest='sync', action='store_false',
+        help='''No syncing with external clock. (default: False)''',
+    )
+    recgroup.add_argument(
+        '--stop_on_dropped', dest='stop_on_dropped', action='store_true',
+        help='''Stop on dropped packet. (default: %(default)s)''',
     )
     recgroup.add_argument(
         '--realtime', dest='realtime', action='store_true',
@@ -444,13 +570,12 @@ if __name__ == '__main__':
 
     op = parser.parse_args()
 
-    if op.dir is None:
-        op.dir = op.outdir
+    if op.datadir is None:
+        op.datadir = op.outdir
+    del op.outdir
 
     if op.mboards is None:
-        # use empty string for unspecified motherboard because we want
-        # len(op.mboards)==1
-        op.mboards = ['']
+        op.mboards = []
     if op.subdevs is None:
         op.subdevs = ['A:A']
     if op.chs is None:
@@ -514,43 +639,8 @@ if __name__ == '__main__':
         '{0}={1}'.format(k, v) for k, v in stream_args_dict.iteritems()
     ]
 
-    # repeat arguments as necessary
-    nmboards = len(op.mboards)
-    nchs = len(op.chs)
-    op.subdevs = list(islice(cycle(op.subdevs), 0, nmboards))
-    op.centerfreqs = list(islice(cycle(op.centerfreqs), 0, nchs))
-    op.gains = list(islice(cycle(op.gains), 0, nchs))
-    op.bandwidths = list(islice(cycle(op.bandwidths), 0, nchs))
-    op.antennas = list(islice(cycle(op.antennas), 0, nchs))
-
     # evaluate samplerate to float
     op.samplerate = float(eval(op.samplerate))
-
-    # create device_addr string to identify the requested device(s)
-    mboard_strs = []
-    for n, mb in enumerate(op.mboards):
-        if not mb:
-            print('*** Automatically choosing first available device ***')
-            break
-        elif re.match(r'.+=.+', mb):
-            idtype, mb = mb.split('=')
-        elif re.match(r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}', mb):
-            idtype = 'addr'
-        elif re.match(r'[0-9]{1,}', mb):
-            idtype = 'serial'
-        elif (
-            re.match(r'usrp[123]', mb) or re.match(r'b2[01]0', mb)
-            or re.match(r'x3[01]0', mb)
-        ):
-            idtype = 'type'
-        else:
-            idtype = 'name'
-        if len(op.mboards) == 1:
-            # do not use identifier numbering if only using one mainboard
-            s = '{idtype}={mb}'.format(idtype=idtype, mb=mb.strip())
-        else:
-            s = '{idtype}{n}={mb}'.format(idtype=idtype, n=n, mb=mb.strip())
-        mboard_strs.append(s)
 
     # convert metadata strings to a dictionary
     metadata_dict = {}
@@ -568,32 +658,11 @@ if __name__ == '__main__':
             metadata_dict.setdefault('metadata', []).append(v)
         else:
             metadata_dict[k] = v
+    op.metadata = metadata_dict
 
-    print('Main boards: ', mboard_strs)
-    print('Subdevices: ', op.subdevs)
-    print('Channel names: ', op.chs)
-    print('Frequency: ', op.centerfreqs)
-    print('Gain: ', op.gains)
-    print('Bandwidth: ', op.bandwidths)
-    print('Antenna: ', op.antennas)
-    print('Device arguments: ', op.dev_args)
-    print('Stream arguments: ', op.stream_args)
-    print('Sample rate: ', op.samplerate)
-    print('Data dir: ', op.dir)
-    print('Metadata: ', metadata_dict)
-
-    # sanity check: # of total subdevs should be same as # of channels
-    mboards_bychan = []
-    subdevs_bychan = []
-    for mb, sd in zip(op.mboards, op.subdevs):
-        sds = sd.split()
-        mbs = list(repeat(mb, len(sds)))
-        mboards_bychan.extend(mbs)
-        subdevs_bychan.extend(sds)
-    if len(subdevs_bychan) != nchs:
-        raise ValueError(
-            '''Number of device channels does not match the number of channel
-               names provided'''
-        )
-
-    main(op)
+    options = dict(op._get_kwargs())
+    starttime = options.pop('starttime')
+    endtime = options.pop('endtime')
+    period = options.pop('period')
+    thor = Thor(**options)
+    thor.run(starttime, endtime, period)
