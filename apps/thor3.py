@@ -32,23 +32,19 @@ import digital_metadata as dmd
 
 
 class Thor(object):
-    def __init__(self, datadir, **kwargs):
-        options = dict(
-            mboards=[], subdevs=['A:A'],
-            chs=['ch0'], centerfreqs=[100e6], gains=[0], bandwidths=[0],
-            antennas=[''],
-            samplerate=1e6, dec=1,
-            dev_args=['recv_buff_size=100000000', 'num_recv_frames=512'],
-            stream_args=[],
-            sync=True, sync_source='external',
-            stop_on_dropped=False, realtime=False,
-            file_cadence_ms=1000, subdir_cadence_s=3600, metadata={},
-            verbose=True, test_settings=True,
-        )
-        options.update(kwargs)
-        options['datadir'] = datadir
-        #FIXME: rewrite so options are in __init__ signature
-        # then use introspection to group all kwargs as options dict
+    def __init__(
+        self, datadir, mboards=[], subdevs=['A:A'],
+        chs=['ch0'], centerfreqs=[100e6], gains=[0], bandwidths=[0],
+        antennas=[''],
+        samplerate=1e6, dec=1,
+        dev_args=['recv_buff_size=100000000', 'num_recv_frames=512'],
+        stream_args=[],
+        sync=True, sync_source='external',
+        stop_on_dropped=False, realtime=False,
+        file_cadence_ms=1000, subdir_cadence_s=3600, metadata={},
+        verbose=True, test_settings=True,
+    ):
+        options = locals()
         self.op = self._parse_options(**options)
 
         # test usrp device settings, release device when done
@@ -191,7 +187,7 @@ class Thor(object):
                     raise ValueError(errstr)
         return u
 
-    def start(self, starttime, endtime, period=10):
+    def start(self, starttime=None, endtime=None, period=10):
         op = self.op
 
         # print current time and NTP status
