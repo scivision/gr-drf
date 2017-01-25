@@ -54,12 +54,22 @@ class Thor(object):
             u = self._usrp_setup()
             if op.verbose:
                 print('Using the following devices:')
+                chinfo = '  Motherboard: {mb_id} ({mb_addr})\n'
+                chinfo += '  Daughterboard: {db_subdev}\n'
+                chinfo += '  Subdev: {subdev}\n'
+                chinfo += '  Antenna: {ant}'
                 for ch_num in range(op.nchs):
-                    info = dict(u.get_usrp_info(chan=ch_num))
                     header = '---- {0} '.format(op.chs[ch_num])
                     header += '-'*(78 - len(header))
                     print(header)
-                    pprint.pprint(info, indent=2)
+                    usrpinfo = dict(u.get_usrp_info(chan=ch_num))
+                    info = {}
+                    info['mb_id'] = usrpinfo['mboard_id']
+                    info['mb_addr'] = op.mboards_bychan[ch_num]
+                    info['db_subdev'] = usrpinfo['rx_subdev_name']
+                    info['subdev'] = op.subdevs_bychan[ch_num]
+                    info['ant'] = u.get_antenna(ch_num)
+                    print(chinfo.format(**info))
                     print('-'*78)
             del u
 
@@ -379,6 +389,8 @@ class Thor(object):
             pass
         fg.stop()
         fg.wait()
+        print('done')
+        sys.stdout.flush()
 
 
 if __name__ == '__main__':
@@ -543,6 +555,12 @@ if __name__ == '__main__':
                 2016-01-01T16:24:00Z (default: %(default)s)''',
     )
     timegroup.add_argument(
+        '-l', '--duration', dest='duration',
+        default=None,
+        help='''Duration of experiment in seconds. When endtime is not given,
+                end this long after start time. (default: %(default)s)''',
+    )
+    timegroup.add_argument(
         '-p', '--cycle-length', dest='period',
         default=10, type=int,
         help='''Repeat time of experiment cycle. Align to start of next cycle
@@ -641,6 +659,9 @@ if __name__ == '__main__':
 
     # evaluate samplerate to float
     op.samplerate = float(eval(op.samplerate))
+    # evaluate duration to float
+    if op.duration is not None:
+        op.duration = float(eval(op.duration))
 
     # convert metadata strings to a dictionary
     metadata_dict = {}
@@ -663,6 +684,7 @@ if __name__ == '__main__':
     options = dict(op._get_kwargs())
     starttime = options.pop('starttime')
     endtime = options.pop('endtime')
+    duration = options.pop('duration')
     period = options.pop('period')
     thor = Thor(**options)
-    thor.run(starttime, endtime, period)
+    thor.run(starttime, endtime, duration, period)
