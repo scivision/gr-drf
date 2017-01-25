@@ -372,6 +372,7 @@ class Thor(object):
         if self.fg is not None:
             self.fg.stop()
             self.fg.wait()
+            del self.fg
             self.fg = None
 
     def wait(self):
