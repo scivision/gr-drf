@@ -63,9 +63,6 @@ class Thor(object):
                     print('-'*78)
             del u
 
-        self.fg = None
-        self.et = None
-
     @staticmethod
     def _parse_options(**kwargs):
         """Put all keyword options in a namespace and normalize them."""
@@ -188,7 +185,7 @@ class Thor(object):
                     raise ValueError(errstr)
         return u
 
-    def start(self, starttime=None, endtime=None, period=10):
+    def run(self, starttime=None, endtime=None, duration=None, period=10):
         op = self.op
 
         # print current time and NTP status
@@ -199,9 +196,9 @@ class Thor(object):
         if starttime is None:
             st = None
         else:
-            dtst0 = dateutil.parser.parse(starttime)
+            dtst = dateutil.parser.parse(starttime)
             epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
-            st = int((dtst0 - epoch).total_seconds())
+            st = int((dtst - epoch).total_seconds())
 
             # find next suitable start time by cycle repeat period
             soon = int(math.ceil(time.time())) + 5
@@ -209,20 +206,20 @@ class Thor(object):
             st = st + periods_until_next*period
 
             if op.verbose:
-                dtststr = dtst0.strftime('%a %b %d %H:%M:%S %Y')
+                dtst = datetime.datetime.utcfromtimestamp(st)
+                dtststr = dtst.strftime('%a %b %d %H:%M:%S %Y')
                 print('Start time: {0} ({1})'.format(dtststr, st))
 
         if endtime is None:
             et = None
         else:
-            dtet0 = dateutil.parser.parse(endtime)
+            dtet = dateutil.parser.parse(endtime)
             epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
-            et = int((dtet0 - epoch).total_seconds())
+            et = int((dtet - epoch).total_seconds())
 
             if op.verbose:
-                dtetstr = dtet0.strftime('%a %b %d %H:%M:%S %Y')
+                dtetstr = dtet.strftime('%a %b %d %H:%M:%S %Y')
                 print('End time: {0} ({1})'.format(dtetstr, et))
-        self.et = et
 
         if et is not None:
             if (et < time.time() + 5) or (st is not None and et <= st):
@@ -295,7 +292,7 @@ class Thor(object):
             sample_dtype = '<i2'
 
         # populate flowgraph one channel at a time
-        self.fg = gr.top_block()
+        fg = gr.top_block()
         for k in range(op.nchs):
             # create digital RF sink
             chdir = os.path.join(op.datadir, op.chs[k])
@@ -318,7 +315,7 @@ class Thor(object):
                 connections = ((u, k), (dst, 0))
 
             # make channel connections in flowgraph
-            self.fg.connect(*connections)
+            fg.connect(*connections)
 
         # set launch time
         if st is not None:
@@ -332,12 +329,12 @@ class Thor(object):
         u.set_start_time(uhd.time_spec(lt))
 
         # start to receive data
-        self.fg.start()
+        fg.start()
 
         # write metadata one channel at a time
         for k in range(op.nchs):
             # create metadata dir, dmd object, and write channel metadata
-            mddir = os.path.join(chdir, 'metadata')
+            mddir = os.path.join(op.datadir, op.chs[k], 'metadata')
             if not os.path.exists(mddir):
                 os.makedirs(mddir)
             mdo = dmd.write_digital_metadata(
@@ -368,26 +365,20 @@ class Thor(object):
                 data_dict=md,
             )
 
-    def stop(self):
-        if self.fg is not None:
-            self.fg.stop()
-            self.fg.wait()
-            del self.fg
-            self.fg = None
-
-    def wait(self):
-        """If end time is set, wait until then. Else wait for flowgraph."""
-        if self.fg is not None:
-            if self.et is None:
-                self.fg.wait()
+        # wait until end time or until flowgraph stops
+        if et is None and duration is not None:
+            et = lt + duration
+        try:
+            if et is None:
+                fg.wait()
             else:
-                while(time.time() < self.et):
+                while(time.time() < et):
                     time.sleep(1)
-
-    def run(self, starttime=None, endtime=None, period=10):
-        self.start(starttime, endtime, period)
-        self.wait()
-        self.stop()
+        except KeyboardInterrupt:
+            # catch keyboard interrupt and simply exit
+            pass
+        fg.stop()
+        fg.wait()
 
 
 if __name__ == '__main__':
