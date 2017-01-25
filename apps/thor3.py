@@ -45,7 +45,9 @@ class Thor(object):
         verbose=True, test_settings=True,
     ):
         options = locals()
-        self.op = self._parse_options(**options)
+        del options['self']
+        op = self._parse_options(**options)
+        self.op = op
 
         # test usrp device settings, release device when done
         if op.test_settings:
@@ -61,8 +63,7 @@ class Thor(object):
                     print('-'*78)
             del u
 
-        # create flowgraph
-        self.fg = gr.top_block()
+        self.fg = None
         self.et = None
 
     @staticmethod
@@ -302,6 +303,7 @@ class Thor(object):
             sample_dtype = '<i2'
 
         # populate flowgraph one channel at a time
+        self.fg = gr.top_block()
         for k in range(op.nchs):
             # create digital RF sink
             chdir = os.path.join(op.datadir, op.chs[k])
@@ -337,7 +339,7 @@ class Thor(object):
                 samples_per_second=samplerate_out,
                 file_name='metadata',
             )
-            md = metadata_dict.copy()
+            md = op.metadata.copy()
             md.update(
                 sample_rate=float(samplerate_out),
                 sample_period_ps=int(1000000000000/samplerate_out),
@@ -361,15 +363,19 @@ class Thor(object):
         self.fg.start()
 
     def stop(self):
-        self.fg.stop()
+        if self.fg is not None:
+            self.fg.stop()
+            self.fg.wait()
+            self.fg = None
 
     def wait(self):
         """If end time is set, wait until then. Else wait for flowgraph."""
-        if self.et is None:
-            self.fg.wait()
-        else:
-            while(time.time() < self.et):
-                time.sleep(1)
+        if self.fg is not None:
+            if self.et is None:
+                self.fg.wait()
+            else:
+                while(time.time() < self.et):
+                    time.sleep(1)
 
     def run(self, starttime=None, endtime=None, period=10):
         self.start(starttime, endtime, period)
