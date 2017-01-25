@@ -197,41 +197,36 @@ class Thor(object):
 
         # parse time arguments
         if starttime is None:
-            # start time now-ish if no time given
-            # use 5 seconds to allow time for latching
-            st0 = int(math.ceil(time.time())) + 5
+            st = None
         else:
             dtst0 = dateutil.parser.parse(starttime)
             epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
-            st0 = int((dtst0 - epoch).total_seconds())
+            st = int((dtst0 - epoch).total_seconds())
+
+            # find next suitable start time by cycle repeat period
+            soon = int(math.ceil(time.time())) + 5
+            periods_until_next = (max(soon - st, 0) - 1)//period + 1
+            st = st + periods_until_next*period
 
             if op.verbose:
                 dtststr = dtst0.strftime('%a %b %d %H:%M:%S %Y')
-                print('Start time: {0} ({1})'.format(dtststr, st0))
+                print('Start time: {0} ({1})'.format(dtststr, st))
 
         if endtime is None:
-            et0 = None
+            et = None
         else:
             dtet0 = dateutil.parser.parse(endtime)
             epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
-            et0 = int((dtet0 - epoch).total_seconds())
+            et = int((dtet0 - epoch).total_seconds())
 
             if op.verbose:
                 dtetstr = dtet0.strftime('%a %b %d %H:%M:%S %Y')
-                print('End time: {0} ({1})'.format(dtetstr, et0))
-        self.et = et0
+                print('End time: {0} ({1})'.format(dtetstr, et))
+        self.et = et
 
-        # find next suitable launch time
-        soon = int(math.ceil(time.time()))
-        periods_until_next = (max(soon - st0, 0) - 1)//period + 1
-        st = st0 + periods_until_next*period
-        dtst = datetime.datetime.utcfromtimestamp(st)
-        if op.verbose:
-            dtststr = dtst.strftime('%a %b %d %H:%M:%S %Y')
-            print('Launch time: {0} ({1})'.format(dtststr, st))
-
-        if et0 is not None and st >= et0:
-            raise ValueError('End time is before launch time!')
+        if et is not None:
+            if (et < time.time() + 5) or (st is not None and et <= st):
+                raise ValueError('End time is before launch time!')
 
         if op.realtime:
             r = gr.enable_realtime_scheduling()
@@ -248,13 +243,14 @@ class Thor(object):
             os.makedirs(op.datadir)
 
         # wait for the start time if it is not past
-        while (st - time.time()) > 10:
+        while (st is not None) and (st - time.time()) > 10:
             ttl = st - time.time()
             if (ttl % 10) == 0:
                 print('Standby {0} s remaining...'.format(ttl))
                 sys.stdout.flush()
             time.sleep(1)
 
+        # get UHD USRP source
         u = self._usrp_setup()
 
         # force creation of the RX streamer ahead of time with a finite
@@ -262,8 +258,6 @@ class Thor(object):
         # device time)
         # this fixes timing with the B210
         u.finite_acquisition_v(16384)
-
-        u.set_start_time(uhd.time_spec(st))
 
         # wait until time 0.2 to 0.5 past full second, then latch
         # we have to trust NTP to be 0.2 s accurate
@@ -284,8 +278,6 @@ class Thor(object):
         # reset device stream and flush buffer to clear leftovers from finite
         # acquisition
         u.stop()
-        # wait 1 sec to ensure the time registers are in a known state
-        time.sleep(1)
 
         # get output settings that depend on decimation rate
         samplerate_out = op.samplerate/op.dec
@@ -328,6 +320,22 @@ class Thor(object):
             # make channel connections in flowgraph
             self.fg.connect(*connections)
 
+        # set launch time
+        if st is not None:
+            lt = st
+        else:
+            lt = int(math.ceil(time.time() + 0.5))
+        if op.verbose:
+            dtlt = datetime.datetime.utcfromtimestamp(lt)
+            dtltstr = dtlt.strftime('%a %b %d %H:%M:%S %Y')
+            print('Launch time: {0} ({1})'.format(dtltstr, lt))
+        u.set_start_time(uhd.time_spec(lt))
+
+        # start to receive data
+        self.fg.start()
+
+        # write metadata one channel at a time
+        for k in range(op.nchs):
             # create metadata dir, dmd object, and write channel metadata
             mddir = os.path.join(chdir, 'metadata')
             if not os.path.exists(mddir):
@@ -346,7 +354,7 @@ class Thor(object):
                 center_frequencies=np.array(
                     [op.centerfreqs[k]]
                 ).reshape((1, -1)),
-                t0=st,
+                t0=lt,
                 n_channels=1,
                 itemsize=sample_size,
                 dtype=sample_dtype,
@@ -356,11 +364,9 @@ class Thor(object):
                 usrp_stream_args=','.join(op.stream_args),
             )
             mdo.write(
-                samples=int(st*samplerate_out),
+                samples=int(lt*samplerate_out),
                 data_dict=md,
             )
-
-        self.fg.start()
 
     def stop(self):
         if self.fg is not None:
