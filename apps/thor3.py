@@ -310,11 +310,6 @@ for ch_num in range(nchs):
     u.set_center_freq(op.centerfreqs[ch_num], ch_num)
     u.set_gain(op.gains[ch_num], ch_num)
 
-if op.stop_on_dropped == True:
-    op.stop_on_dropped = 1
-else:
-    op.stop_on_dropped = 0
-
 # print current time and NTP status
 call(('timedatectl', 'status'))
 
@@ -386,7 +381,7 @@ if op.dec > 1:
                              window=firdes.WIN_BLACKMAN_hARRIS)
 
     lpfs = [filter.freq_xlating_fir_filter_ccf(op.dec,taps,0.0,op.samplerate) for k in range(nchs)]
-    dsts = [drf.digital_rf(
+    dsts = [drf.digital_rf_sink(
                 d, gr.sizeof_gr_complex, op.subdir_cadence_s, op.file_cadence_ms,
                 op.samplerate/op.dec, 'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,
@@ -397,7 +392,8 @@ if op.dec > 1:
 
         # create metadata dir, dmd object, and write channel metadata
         md_dir = os.path.join(dirs[k], 'metadata')
-        os.makedirs(md_dir)
+        if not os.path.exists(md_dir):
+            os.makedirs(md_dir)
         mdo = dmd.write_digital_metadata(
             metadata_dir=md_dir,
             subdirectory_cadence_seconds=op.subdir_cadence_s,
@@ -408,7 +404,7 @@ if op.dec > 1:
         md = metadata_dict.copy()
         md.update(
             sample_rate=float(op.samplerate/op.dec),
-            sample_period_ps=int(1000000000000/int(op.samplerate/op.dec)),
+            sample_period_ps=int(1000000000000/(op.samplerate/op.dec)),
             center_frequencies=np.array([op.centerfreqs[k]]),
             t0=st,
             n_channels=1,
@@ -420,11 +416,11 @@ if op.dec > 1:
             usrp_stream_args=op.stream_args,
         )
         mdo.write(
-            samples=0,
+            samples=int(st*op.samplerate),
             data_dict=md,
         )
 else:
-    dsts = [drf.digital_rf(
+    dsts = [drf.digital_rf_sink(
                 d, 2*gr.sizeof_short, op.subdir_cadence_s, op.file_cadence_ms,
                 op.samplerate, 'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,
@@ -435,7 +431,8 @@ else:
 
         # create metadata dir, dmd object, and write channel metadata
         md_dir = os.path.join(dirs[k], 'metadata')
-        os.makedirs(md_dir)
+        if not os.path.exists(md_dir):
+            os.makedirs(md_dir)
         mdo = dmd.write_digital_metadata(
             metadata_dir=md_dir,
             subdirectory_cadence_seconds=op.subdir_cadence_s,
@@ -446,7 +443,7 @@ else:
         md = metadata_dict.copy()
         md.update(
             sample_rate=float(op.samplerate),
-            sample_period_ps=int(1000000000000/int(op.samplerate)),
+            sample_period_ps=int(1000000000000/op.samplerate),
             center_frequencies=np.array([op.centerfreqs[k]]),
             t0=st,
             n_channels=1,
@@ -458,7 +455,7 @@ else:
             usrp_stream_args=op.stream_args,
         )
         mdo.write(
-            samples=0,
+            samples=int(st*op.samplerate),
             data_dict=md,
         )
 
