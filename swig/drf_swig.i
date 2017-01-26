@@ -9,11 +9,9 @@
 
 %{
 #include "drf/digital_rf_sink.h"
-#include "drf/dddc.h"
 %}
 
 
 %include "drf/digital_rf_sink.h"
 GR_SWIG_BLOCK_MAGIC2(drf, digital_rf_sink);
-%include "drf/dddc.h"
-GR_SWIG_BLOCK_MAGIC2(drf, dddc);
+
