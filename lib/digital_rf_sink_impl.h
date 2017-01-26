@@ -33,7 +33,7 @@ namespace gr {
     class digital_rf_sink_impl : public digital_rf_sink
     {
      private:
-      char dirn[4096];
+      char d_dir[4096];
       size_t d_sample_size;
       uint64_t d_subdir_cadence_s;
       uint64_t d_file_cadence_ms;
@@ -43,15 +43,15 @@ namespace gr {
       int d_num_subchannels;
       bool d_stop_on_dropped_packet;
 
-      Digital_rf_write_object *drf;
-      hid_t dtype;
-      uint64_t t0; // start time floored to nearest second in samples from unix epoch
-      uint64_t _t0; // start time in samples from unix epoch
-      uint64_t local_index;
-      uint64_t total_dropped;
-      bool first;
+      Digital_rf_write_object *d_drfo;
+      hid_t d_dtype;
+      uint64_t d_t0s; // start time floored to nearest second in samples from unix epoch
+      uint64_t d_t0; // start time in samples from unix epoch
+      uint64_t d_local_index;
+      uint64_t d_total_dropped;
+      bool d_first;
 
-      char *zero_buffer;
+      char *d_zero_buffer;
 
       // make copy constructor private with no implementation to prevent copying
       digital_rf_sink_impl(const digital_rf_sink_impl& that);
@@ -63,9 +63,11 @@ namespace gr {
                            int num_subchannels, bool stop_on_dropped_packet);
       ~digital_rf_sink_impl();
 
-      int detect_overflow(uint64_t start, uint64_t end);
+      bool start();
+      bool stop();
+
       void get_rx_time(int n);
-      void short_to_char_conv(short *in, char *out, int len);
+      int detect_and_handle_overflow(uint64_t start, uint64_t end, char *in);
 
       // Where all the action really happens
       int work(int noutput_items,
