@@ -66,6 +66,64 @@ namespace gr {
     {
       char command[4096];
       int i;
+
+      if(d_is_complex)
+      {
+        // complex char (int8)
+        if(d_sample_size == 2)
+        {
+          dtype = H5T_NATIVE_CHAR;
+        }
+        // complex short (int16)
+        else if(d_sample_size == 4)
+        {
+          dtype = H5T_NATIVE_SHORT;
+        }
+        // complex float (float32)
+        else if(d_sample_size == 8)
+        {
+          dtype = H5T_NATIVE_FLOAT;
+        }
+        // complex double (float64)
+        else if(d_sample_size == 16)
+        {
+          dtype = H5T_NATIVE_DOUBLE;
+        }
+        else
+        {
+          printf("Item size not supported\n");
+          exit(0);
+        }
+      }
+      else
+      {
+        // char (int8)
+        if(d_sample_size == 1)
+        {
+          dtype = H5T_NATIVE_CHAR;
+        }
+        // short (int16)
+        else if(d_sample_size == 2)
+        {
+          dtype = H5T_NATIVE_SHORT;
+        }
+        // float (float32)
+        else if(d_sample_size == 4)
+        {
+          dtype = H5T_NATIVE_FLOAT;
+        }
+        // double (float64)
+        else if(d_sample_size == 8)
+        {
+          dtype = H5T_NATIVE_DOUBLE;
+        }
+        else
+        {
+          printf("Item size not supported\n");
+          exit(0);
+        }
+      }
+
       printf("%s\n", dir);
       strcpy(dirn, dir);
       sprintf(command, "mkdir -p %s", dirn);
@@ -73,6 +131,7 @@ namespace gr {
       fflush(stdout);
       int ignore_this = system(command);
       strcpy(d_uuid, uuid);
+
       t0 = 1;
       _t0 = 1;
       first = 1;
@@ -159,7 +218,6 @@ namespace gr {
                               gr_vector_void_star &output_items)
     {
       void *in = (void *) input_items[0];
-      hid_t dtype;
       int result, i;
       int samples_dropped;
 
@@ -169,63 +227,6 @@ namespace gr {
       {
         // sets start time t0
         get_rx_time(noutput_items);
-
-        if(d_is_complex)
-        {
-          // complex char (int8)
-          if(d_sample_size == 2)
-          {
-            dtype = H5T_NATIVE_CHAR;
-          }
-          // complex short (int16)
-          else if(d_sample_size == 4)
-          {
-            dtype = H5T_NATIVE_SHORT;
-          }
-          // complex float (float32)
-          else if(d_sample_size == 8)
-          {
-            dtype = H5T_NATIVE_FLOAT;
-          }
-          // complex double (float64)
-          else if(d_sample_size == 16)
-          {
-            dtype = H5T_NATIVE_DOUBLE;
-          }
-          else
-          {
-            printf("Item size not supported");
-            exit(0);
-          }
-        }
-        else
-        {
-          // char (int8)
-          if(d_sample_size == 1)
-          {
-            dtype = H5T_NATIVE_CHAR;
-          }
-          // short (int16)
-          else if(d_sample_size == 2)
-          {
-            dtype = H5T_NATIVE_SHORT;
-          }
-          // float (float32)
-          else if(d_sample_size == 4)
-          {
-            dtype = H5T_NATIVE_FLOAT;
-          }
-          // double (float64)
-          else if(d_sample_size == 8)
-          {
-            dtype = H5T_NATIVE_DOUBLE;
-          }
-          else
-          {
-            printf("Item size not supported");
-            exit(0);
-          }
-        }
 
         printf("create %s t0 %ld sample_rate %f\n", dirn, t0, d_sample_rate);
         fflush(stdout);
@@ -241,6 +242,9 @@ namespace gr {
                 dirn, dtype, d_subdir_cadence_s, d_file_cadence_ms, t0,
                 d_sample_rate, d_uuid, 0, 0, d_is_complex, d_num_subchannels,
                 1, 1);
+        if(!drf)
+          printf("Failed to create Digital RF writer object\n"
+          exit(-1);
         printf("done\n");
         first = 0;
       }
@@ -263,7 +267,7 @@ namespace gr {
       {
         if(samples_dropped*d_sample_size*d_num_subchannels > ZERO_BUFFER_SIZE)
         {
-          printf("Too many dropped samples");
+          printf("Too many dropped samples\n");
           exit(0);
         }
         result = digital_rf_write_hdf5(drf, local_index, zero_buffer, samples_dropped);
