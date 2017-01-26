@@ -63,9 +63,6 @@ namespace gr {
                            int num_subchannels, bool stop_on_dropped_packet);
       ~digital_rf_sink_impl();
 
-      bool start();
-      bool stop();
-
       void get_rx_time(int n);
       int detect_and_handle_overflow(uint64_t start, uint64_t end, char *in);
 
