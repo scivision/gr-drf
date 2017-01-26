@@ -43,6 +43,8 @@ width = formatter._width
 
 desc = 'Record data from synchronized USRPs in DigitalRF format.'
 
+usage = '%(prog)s [options] [-o DIR | DIR]'
+
 epi_pars = [
     '''\
     Multiple mainboards can be specified by repeating the mainboard and
@@ -51,7 +53,7 @@ epi_pars = [
     be duplicated if necessary to match the number of specified mainboards.
     ''',
     '''\
-    Typical usage:
+    Example usage:
     ''',
 ]
 epi_pars = [fill(dedent(s), width) for s in epi_pars]
@@ -76,10 +78,16 @@ egs = [' \\\n'.join(egtw.wrap(dedent(s.format(scriptname)))) for s in egs]
 epi = '\n' + '\n\n'.join(epi_pars + egs) + '\n'
 
 ## parse options
-parser = ArgumentParser(description=desc, epilog=epi,
+parser = ArgumentParser(description=desc, usage=usage, epilog=epi,
                         formatter_class=RawDescriptionHelpFormatter)
 
-parser.add_argument('dir',
+dirgroup = parser.add_mutually_exclusive_group(required=True)
+
+dirgroup.add_argument('dir', nargs='?', default=None,
+                    help='''Data directory, to be filled with channel
+                            subdirectories.''')
+
+dirgroup.add_argument('-o', '--out', dest='outdir', default=None,
                     help='''Data directory, to be filled with channel
                             subdirectories.''')
 
@@ -173,6 +181,9 @@ parser.add_argument('--realtime', dest='realtime', action='store_true',
                             (default: %(default)s)''')
 
 op = parser.parse_args()
+
+if op.dir is None:
+    op.dir = op.outdir
 
 if op.mboards is None:
     # use empty string for unspecified motherboard because we want len(op.mboards)==1
