@@ -308,6 +308,47 @@ if op.realtime:
     else:
        print('Note: failed to enable realtime scheduling')
 
+
+# print current time and NTP status
+call(('timedatectl', 'status'))
+
+# parse time arguments as very last thing before launching
+if op.starttime is None:
+    st0 = int(math.ceil(time.time())) + 5
+else:
+    dtst0 = dateutil.parser.parse(op.starttime)
+    st0 = int((dtst0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
+
+    print('Start time: %s (%d)' % (dtst0.strftime('%a %b %d %H:%M:%S %Y'), st0))
+
+if op.endtime is None:
+    et0 = None
+else:
+    dtet0 = dateutil.parser.parse(op.endtime)
+    et0 = int((dtet0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
+
+    print('End time: %s (%d)' % (dtet0.strftime('%a %b %d %H:%M:%S %Y'), et0))
+
+# find next suitable launch time
+soon = int(math.ceil(time.time()))
+periods_until_next = (max(soon - st0, 0) - 1)//op.period + 1
+st = st0 + periods_until_next*op.period
+dtst = datetime.datetime.utcfromtimestamp(st)
+print('Launch time: %s (%d)' % (dtst.strftime('%a %b %d %H:%M:%S %Y'), st))
+
+if et0 is not None and st >= et0:
+    raise ValueError('End time is before launch time!')
+
+# create data directory so ringbuffer code can be started while waiting to launch
+if not os.path.isdir(op.dir):
+    os.makedirs(op.dir)
+
+# wait for the start time if it is not past
+while (st - time.time()) > 10:
+    print('Standby %d s remaining...' % (st - time.time()))
+    sys.stdout.flush()
+    time.sleep(1)
+
 # create usrp source block
 if op.dec > 1:
     cpu_format = 'fc32'
@@ -366,46 +407,7 @@ for ch_num in range(nchs):
 # this fixes timing with the B210
 u.finite_acquisition_v(16384)
 
-# print current time and NTP status
-call(('timedatectl', 'status'))
-
-# parse time arguments as very last thing before launching
-if op.starttime is None:
-    st0 = int(math.ceil(time.time())) + 5
-else:
-    dtst0 = dateutil.parser.parse(op.starttime)
-    st0 = int((dtst0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
-
-    print('Start time: %s (%d)' % (dtst0.strftime('%a %b %d %H:%M:%S %Y'), st0))
-
-if op.endtime is None:
-    et0 = None
-else:
-    dtet0 = dateutil.parser.parse(op.endtime)
-    et0 = int((dtet0 - datetime.datetime(1970,1,1,tzinfo=pytz.utc)).total_seconds())
-
-    print('End time: %s (%d)' % (dtet0.strftime('%a %b %d %H:%M:%S %Y'), et0))
-
-# find next suitable launch time
-soon = int(math.ceil(time.time()))
-periods_until_next = (max(soon - st0, 0) - 1)//op.period + 1
-st = st0 + periods_until_next*op.period
-dtst = datetime.datetime.utcfromtimestamp(st)
-print('Launch time: %s (%d)' % (dtst.strftime('%a %b %d %H:%M:%S %Y'), st))
 u.set_start_time(uhd.time_spec(st))
-
-if et0 is not None and st >= et0:
-    raise ValueError('End time is before launch time!')
-
-# create data directory so ringbuffer code can be started while waiting to launch
-if not os.path.isdir(op.dir):
-    os.makedirs(op.dir)
-
-# wait for the start time if it is not past
-while (st - time.time()) > 10:
-    print('Standby %d s remaining...' % (st - time.time()))
-    sys.stdout.flush()
-    time.sleep(1)
 
 # wait until time 0.2 to 0.5 past full second, then latch.
 # we have to trust NTP to be 0.2 s accurate. It might be a good idea to do a ntpdate before running
