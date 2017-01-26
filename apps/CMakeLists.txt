@@ -21,7 +21,6 @@ include(GrPython)
 
 GR_PYTHON_INSTALL(
     PROGRAMS
-    thor2_multi.py
-    drf_ram_move.py
+    thor3.py
     DESTINATION bin
 )
