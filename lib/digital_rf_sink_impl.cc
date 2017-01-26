@@ -216,13 +216,14 @@ namespace gr {
         uint64_t tt0_sec = pmt::to_uint64(pmt::tuple_ref(value, 0));
         double tt0_frac = pmt::to_double(pmt::tuple_ref(value, 1));
 
+        // get sample index of drop (as opposed to packet index == offset)
+        drop_index = offset + d_total_dropped;
+
         // we should have this many samples
         dt = (((int64_t)d_sample_rate)*tt0_sec + (int64_t)(tt0_frac*d_sample_rate)
               - (int64_t)d_t0 - (int64_t)d_total_dropped);
 
         dropped = dt - offset;
-        // get sample index of drop (as opposed to packet index == offset)
-        drop_index = offset + d_total_dropped;
         d_total_dropped += dropped;
         printf("\nDropped %u packet(s) @ %lu, total_dropped %lu\n",
                dropped, drop_index, d_total_dropped);
@@ -307,7 +308,7 @@ namespace gr {
       if(result) {
         throw std::runtime_error("Nonzero result on write");
       }
-      d_local_index += noutput_items;
+      d_local_index += noutput_items - samples_consumed;
 
       // Tell runtime system how many output items we produced.
       return noutput_items;
