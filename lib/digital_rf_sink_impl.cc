@@ -256,7 +256,7 @@ namespace gr {
 //        }
         // advance sample index by number of dropped packets
         // (dropped samples will have HDF5 fill value if not written to)
-        d_local_index += filled;
+        d_local_index += dropped;
       }
       return(consumed);
     }
