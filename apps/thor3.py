@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 #
-# Record data from synchronized USRPs in DigitalRF format.
+# Copyright (c) 2017 Massachusetts Institute of Technology
 #
-# (c) 2014 Juha Vierinen
-# (c) 2015-2016 Ryan Volz
-#
+"""Record data from synchronized USRPs in Digital RF format."""
 from __future__ import print_function
 
 import sys
@@ -15,7 +13,6 @@ import time
 import datetime
 import dateutil.parser
 import pytz
-import pprint
 import numpy as np
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, Namespace
 from textwrap import fill, dedent, TextWrapper
@@ -446,7 +443,7 @@ if __name__ == '__main__':
         '--version', action='version',
         version='''THOR version 3.0 (The Haystack Observatory Recorder)
 
-                   (c) 2014-2016 Massachusetts Institute of Technology''',
+                   Copyright (c) 2017 Massachusetts Institute of Technology''',
     )
     parser.add_argument(
         '-q', '--quiet', dest='verbose', action='store_false',
