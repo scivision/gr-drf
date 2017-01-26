@@ -18,6 +18,6 @@
 # Boston, MA 02110-1301, USA.
 
 install(FILES
-    drf_digital_rf.xml
+    drf_digital_rf_sink.xml
     drf_dddc.xml DESTINATION share/gnuradio/grc/blocks
 )
