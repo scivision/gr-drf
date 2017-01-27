@@ -173,7 +173,13 @@ class Thor(object):
             u.set_subdev_spec(op.subdevs[mb_num], mb_num)
         # set global options
         u.set_samp_rate(op.samplerate)
-        op.samplerate = u.get_samp_rate()  # may be different than desired
+        samplerate = u.get_samp_rate()  # may be different than desired
+        # calculate longdouble precision sample rate
+        # (integer division of clock rate)
+        cr = u.get_clock_rate()
+        srdec = int(round(cr/samplerate))
+        samplerate_ld = np.longdouble(cr)/srdec
+        op.samplerate = samplerate_ld
         # set per-channel options
         for ch_num in range(op.nchs):
             u.set_center_freq(op.centerfreqs[ch_num], ch_num)
@@ -290,8 +296,8 @@ class Thor(object):
             sample_dtype = '<f4'
 
             taps = firdes.low_pass_2(
-                1.0, op.samplerate, samplerate_out/2.0,
-                0.2*(samplerate_out), 80.0,
+                1.0, float(op.samplerate), float(samplerate_out/2.0),
+                float(0.2*samplerate_out), 80.0,
                 window=firdes.WIN_BLACKMAN_hARRIS
             )
         else:
@@ -312,7 +318,7 @@ class Thor(object):
             if op.dec > 1:
                 # create low-pass filter
                 lpf = filter.freq_xlating_fir_filter_ccf(
-                    op.dec, taps, 0.0, op.samplerate
+                    op.dec, taps, 0.0, float(op.samplerate)
                 )
 
                 # connections for usrp->lpf->drf
@@ -353,8 +359,8 @@ class Thor(object):
             )
             md = op.metadata.copy()
             md.update(
-                sample_rate=float(samplerate_out),
-                sample_period_ps=int(1000000000000/samplerate_out),
+                sample_rate=samplerate_out,
+                sample_period_ps=1000000000000/samplerate_out,
                 center_frequencies=np.array(
                     [op.centerfreqs[k]]
                 ).reshape((1, -1)),
