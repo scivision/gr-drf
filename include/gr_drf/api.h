@@ -19,15 +19,15 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef INCLUDED_DRF_API_H
-#define INCLUDED_DRF_API_H
+#ifndef INCLUDED_GRDRF_API_H
+#define INCLUDED_GRDRF_API_H
 
 #include <gnuradio/attributes.h>
 
 #ifdef gnuradio_drf_EXPORTS
-#  define DRF_API __GR_ATTR_EXPORT
+#  define GRDRF_API __GR_ATTR_EXPORT
 #else
-#  define DRF_API __GR_ATTR_IMPORT
+#  define GRDRF_API __GR_ATTR_IMPORT
 #endif
 
-#endif /* INCLUDED_DRF_API_H */
+#endif /* INCLUDED_GRDRF_API_H */

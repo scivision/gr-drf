@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 
-#define DRF_API
+#define GRDRF_API
 
 %include "gnuradio.i"			// the common stuff
 
@@ -11,7 +11,7 @@
 #define SWIG_FILE_WITH_INIT
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
-#include "drf/digital_rf_sink.h"
+#include "gr_drf/digital_rf_sink.h"
 %}
 
 // needed to initialize numpy C api and not have segfaults
@@ -64,6 +64,6 @@
 }
 
 
-%include "drf/digital_rf_sink.h"
+%include "gr_drf/digital_rf_sink.h"
 GR_SWIG_BLOCK_MAGIC2(drf, digital_rf_sink);
 

@@ -2,8 +2,8 @@
   <name>Digital RF Sink</name>
   <key>drf_digital_rf_sink</key>
   <category>Digital RF</category>
-  <import>import drf</import>
-  <make>drf.digital_rf_sink($dir, $input.size, $subdir_cadence_s, $file_cadence_ms, $sample_rate, $uuid, $input.complex, $vlen, $stop_on_dropped)</make>
+  <import>import gr_drf</import>
+  <make>gr_drf.digital_rf_sink($dir, $input.size, $subdir_cadence_s, $file_cadence_ms, $sample_rate, $uuid, $input.complex, $vlen, $stop_on_dropped)</make>
   <param>
     <name>Directory</name>
     <key>dir</key>

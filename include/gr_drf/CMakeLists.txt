@@ -23,5 +23,5 @@
 install(FILES
     api.h
     digital_rf_sink.h
-    DESTINATION include/drf
+    DESTINATION include/gr_drf
 )

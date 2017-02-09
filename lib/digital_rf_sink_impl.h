@@ -4,10 +4,10 @@
  *
  */
 
-#ifndef INCLUDED_DRF_DIGITAL_RF_SINK_IMPL_H
-#define INCLUDED_DRF_DIGITAL_RF_SINK_IMPL_H
+#ifndef INCLUDED_GRDRF_DIGITAL_RF_SINK_IMPL_H
+#define INCLUDED_GRDRF_DIGITAL_RF_SINK_IMPL_H
 
-#include <drf/digital_rf_sink.h>
+#include <gr_drf/digital_rf_sink.h>
 
 extern "C" {
 #include <digital_rf.h>
@@ -61,5 +61,5 @@ namespace gr {
   } // namespace drf
 } // namespace gr
 
-#endif /* INCLUDED_DRF_DIGITAL_RF_SINK_IMPL_H */
+#endif /* INCLUDED_GRDRF_DIGITAL_RF_SINK_IMPL_H */
 

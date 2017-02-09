@@ -24,7 +24,7 @@ from gnuradio import uhd
 from gnuradio import filter
 from gnuradio.filter import firdes
 
-import drf
+import gr_drf
 import digital_metadata as dmd
 
 
@@ -309,7 +309,7 @@ class Thor(object):
         for k in range(op.nchs):
             # create digital RF sink
             chdir = os.path.join(op.datadir, op.chs[k])
-            dst = drf.digital_rf_sink(
+            dst = gr_drf.digital_rf_sink(
                 chdir, sample_size, op.subdir_cadence_s, op.file_cadence_ms,
                 samplerate_out, 'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,

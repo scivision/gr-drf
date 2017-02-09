@@ -58,7 +58,7 @@ GR_SWIG_MAKE(drf_swig drf_swig.i)
 ########################################################################
 # Install the build swig module
 ########################################################################
-GR_SWIG_INSTALL(TARGETS drf_swig DESTINATION ${GR_PYTHON_DIR}/drf)
+GR_SWIG_INSTALL(TARGETS drf_swig DESTINATION ${GR_PYTHON_DIR}/gr_drf)
 
 ########################################################################
 # Install swig .i files for development
@@ -67,5 +67,5 @@ install(
     FILES
     drf_swig.i
     ${CMAKE_CURRENT_BINARY_DIR}/drf_swig_doc.i
-    DESTINATION ${GR_INCLUDE_DIR}/drf/swig
+    DESTINATION ${GR_INCLUDE_DIR}/gr_drf/swig
 )

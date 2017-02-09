@@ -5,10 +5,10 @@
  */
 
 
-#ifndef INCLUDED_DRF_DIGITAL_RF_SINK_H
-#define INCLUDED_DRF_DIGITAL_RF_SINK_H
+#ifndef INCLUDED_GRDRF_DIGITAL_RF_SINK_H
+#define INCLUDED_GRDRF_DIGITAL_RF_SINK_H
 
-#include <drf/api.h>
+#include <gr_drf/api.h>
 #include <gnuradio/sync_block.h>
 
 namespace gr {
@@ -19,13 +19,13 @@ namespace gr {
      * \ingroup drf
      *
      */
-    class DRF_API digital_rf_sink : virtual public gr::sync_block
+    class GRDRF_API digital_rf_sink : virtual public gr::sync_block
     {
      public:
       typedef boost::shared_ptr<digital_rf_sink> sptr;
 
       /*!
-       * \brief Return a shared_ptr to a new instance of drf::digital_rf_sink.
+       * \brief Return a shared_ptr to a new instance of gr_drf::digital_rf_sink.
        *
        * \param dir Directory to write to.
        * \param sample_size Size of the input data items.
@@ -37,9 +37,9 @@ namespace gr {
        * \param num_subchannels Number of subchannels (i.e. vector length).
        * \param stop_on_dropped_packet If True, stop when a packet is dropped.
        *
-       * To avoid accidental use of raw pointers, drf::digital_rf_sink's
+       * To avoid accidental use of raw pointers, gr_drf::digital_rf_sink's
        * constructor is in a private implementation
-       * class. drf::digital_rf_sink::make is the public interface for
+       * class. gr_drf::digital_rf_sink::make is the public interface for
        * creating new instances.
        */
       static sptr make(char *dir, size_t sample_size,
@@ -51,5 +51,5 @@ namespace gr {
   } // namespace drf
 } // namespace gr
 
-#endif /* INCLUDED_DRF_DIGITAL_RF_SINK_H */
+#endif /* INCLUDED_GRDRF_DIGITAL_RF_SINK_H */
 
