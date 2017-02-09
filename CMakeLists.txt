@@ -73,6 +73,11 @@ if(NOT HDF5_FOUND)
 endif()
 
 ########################################################################
+# Find numpy
+########################################################################
+find_package(NumPy REQUIRED)
+
+########################################################################
 # Install directories
 ########################################################################
 include(GrPlatform) #define LIB_SUFFIX
@@ -118,7 +123,7 @@ find_package(Doxygen)
 # Search for GNU Radio and its components and versions. Add any
 # components required to the list of GR_REQUIRED_COMPONENTS (in all
 # caps such as FILTER or FFT) and change the version to the minimum
-# API compatible version required.
+# API comptible version required.
 set(GR_REQUIRED_COMPONENTS RUNTIME)
 find_package(Gnuradio "3.7.2" REQUIRED)
 
