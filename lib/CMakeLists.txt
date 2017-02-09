@@ -18,11 +18,20 @@
 # Boston, MA 02110-1301, USA.
 
 ########################################################################
+# Find HDF5
+########################################################################
+find_package(HDF5)
+
+if(NOT HDF5_FOUND)
+    message(FATAL_ERROR "HDF5 required to compile drf")
+endif()
+
+########################################################################
 # Setup library
 ########################################################################
 include(GrPlatform) #define LIB_SUFFIX
 
-include_directories(${Boost_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS} ${NUMPY_INCLUDE_DIRS})
+include_directories(${Boost_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS} ${HDF5_LIBRARY_DIRS})
 list(APPEND drf_sources
     digital_rf_sink_impl.cc

@@ -37,6 +37,12 @@ include(GrSwig)
 include(GrPython)
 
 ########################################################################
+# Find numpy and add to includes
+########################################################################
+find_package(NumPy REQUIRED)
+list(APPEND GR_SWIG_INCLUDE_DIRS ${NUMPY_INCLUDE_DIRS})
+
+########################################################################
 # Setup swig generation
 ########################################################################
 foreach(incdir ${GNURADIO_RUNTIME_INCLUDE_DIRS})
