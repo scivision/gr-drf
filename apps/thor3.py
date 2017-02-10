@@ -111,7 +111,7 @@ class Thor(object):
             op.mboard_strs.append(s)
 
         if op.verbose:
-            opstr = dedent('''
+            opstr = dedent('''\
                 Main boards: {mboard_strs}
                 Subdevices: {subdevs}
                 Channel names: {chs}
@@ -125,7 +125,7 @@ class Thor(object):
                 Sample rate: {samplerate}
                 Data dir: {datadir}
                 Metadata: {metadata}
-            ''').format(**op.__dict__)
+            ''').strip().format(**op.__dict__)
             print(opstr)
 
         # sanity check: # of total subdevs should be same as # of channels
