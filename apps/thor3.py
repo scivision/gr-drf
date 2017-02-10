@@ -31,8 +31,8 @@ import digital_metadata as dmd
 class Thor(object):
     def __init__(
         self, datadir, mboards=[], subdevs=['A:A'],
-        chs=['ch0'], centerfreqs=[100e6], gains=[0], bandwidths=[0],
-        antennas=[''],
+        chs=['ch0'], centerfreqs=[100e6], lo_offsets=[0],
+        gains=[0], bandwidths=[0], antennas=[''],
         samplerate=1e6, dec=1,
         dev_args=['recv_buff_size=100000000', 'num_recv_frames=512'],
         stream_args=[],
@@ -80,6 +80,7 @@ class Thor(object):
         # repeat arguments as necessary
         op.subdevs = list(islice(cycle(op.subdevs), 0, op.nmboards))
         op.centerfreqs = list(islice(cycle(op.centerfreqs), 0, op.nchs))
+        op.lo_offsets = list(islice(cycle(op.lo_offsets), 0, op.nchs))
         op.gains = list(islice(cycle(op.gains), 0, op.nchs))
         op.bandwidths = list(islice(cycle(op.bandwidths), 0, op.nchs))
         op.antennas = list(islice(cycle(op.antennas), 0, op.nchs))
@@ -110,18 +111,22 @@ class Thor(object):
             op.mboard_strs.append(s)
 
         if op.verbose:
-            print('Main boards: ', op.mboard_strs)
-            print('Subdevices: ', op.subdevs)
-            print('Channel names: ', op.chs)
-            print('Frequency: ', op.centerfreqs)
-            print('Gain: ', op.gains)
-            print('Bandwidth: ', op.bandwidths)
-            print('Antenna: ', op.antennas)
-            print('Device arguments: ', op.dev_args)
-            print('Stream arguments: ', op.stream_args)
-            print('Sample rate: ', op.samplerate)
-            print('Data dir: ', op.datadir)
-            print('Metadata: ', op.metadata)
+            opstr = dedent('''
+                Main boards: {mboard_strs}
+                Subdevices: {subdevs}
+                Channel names: {chs}
+                Frequency: {centerfreqs}
+                Frequency offset: {lo_offsets}
+                Gain: {gains}
+                Bandwidth: {bandwidths}
+                Antenna: {antennas}
+                Device arguments: {dev_args}
+                Stream arguments: {stream_args}
+                Sample rate: {samplerate}
+                Data dir: {datadir}
+                Metadata: {metadata}
+            ''').format(**op.__dict__)
+            print(opstr)
 
         # sanity check: # of total subdevs should be same as # of channels
         op.mboards_bychan = []
@@ -182,7 +187,12 @@ class Thor(object):
         op.samplerate = samplerate_ld
         # set per-channel options
         for ch_num in range(op.nchs):
-            u.set_center_freq(op.centerfreqs[ch_num], ch_num)
+            u.set_center_freq(
+                uhd.tune_request(
+                    op.centerfreqs[ch_num], op.lo_offsets[ch_num],
+                ),
+                ch_num,
+            )
             u.set_gain(op.gains[ch_num], ch_num)
             bw = op.bandwidths[ch_num]
             if bw:
@@ -496,7 +506,12 @@ if __name__ == '__main__':
     )
     chgroup.add_argument(
         '-f', '--centerfreq', dest='centerfreqs', action='append',
-        help='''Center frequency. (default: 100e6)''',
+        help='''Center frequency in Hz. (default: 100e6)''',
+    )
+    chgroup.add_argument(
+        '-F', '--lo_offset', dest='lo_offsets', action='append',
+        help='''Frontend tuner offset from center frequency, in Hz.
+                (default: 0)''',
     )
     chgroup.add_argument(
         '-g', '--gain', dest='gains', action='append',
@@ -611,6 +626,8 @@ if __name__ == '__main__':
         op.chs = ['ch0']
     if op.centerfreqs is None:
         op.centerfreqs = ['100e6']
+    if op.lo_offsets is None:
+        op.lo_offsets = ['0']
     if op.gains is None:
         op.gains = ['0']
     if op.bandwidths is None:
@@ -633,6 +650,9 @@ if __name__ == '__main__':
     op.chs = [b.strip() for a in op.chs for b in a.strip().split(',')]
     op.centerfreqs = [
         float(b.strip()) for a in op.centerfreqs for b in a.strip().split(',')
+    ]
+    op.lo_offsets = [
+        float(b.strip()) for a in op.lo_offsets for b in a.strip().split(',')
     ]
     op.gains = [
         float(b.strip()) for a in op.gains for b in a.strip().split(',')
