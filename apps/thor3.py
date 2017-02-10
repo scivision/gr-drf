@@ -335,11 +335,16 @@ class Thor(object):
             lt = st
         else:
             lt = int(math.ceil(time.time() + 0.5))
+        # adjust launch time forward so it falls on an exact sample since epoch
+        lt = np.ceil(lt*samplerate_out)/samplerate_out
         if op.verbose:
             dtlt = datetime.datetime.utcfromtimestamp(lt)
             dtltstr = dtlt.strftime('%a %b %d %H:%M:%S %Y')
             print('Launch time: {0} ({1})'.format(dtltstr, lt))
-        u.set_start_time(uhd.time_spec(lt))
+        # going through time_spec is only way I found to get a time_t type
+        lt_secs = uhd.time_spec(float(lt // 1.0)).get_full_secs()
+        lt_frac = float(lt % 1.0)
+        u.set_start_time(uhd.time_spec(lt_secs, lt_frac))
 
         # start to receive data
         fg.start()
