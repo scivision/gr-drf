@@ -23,10 +23,11 @@ This is the GNU Radio DRF module. Place your Python package
 description here (python/__init__.py).
 '''
 
-# import swig generated symbols into the drf namespace
+# import swig generated symbols into the gr_drf namespace
 try:
 	# this might fail if the module is python-only
-	from drf_swig import *
+	#from drf_swig import *
+	from drf_swig import digital_rf_sink
 except ImportError:
 	pass
 

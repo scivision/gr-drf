@@ -21,7 +21,7 @@
 # Project setup
 ########################################################################
 cmake_minimum_required(VERSION 2.6)
-project(gr-drf CXX C)
+project(gr_drf CXX C)
 enable_testing()
 
 #select the release build type by default to get optimization flags
@@ -64,21 +64,12 @@ if(NOT Boost_FOUND)
 endif()
 
 ########################################################################
-# Find HDF5
-########################################################################
-find_package(HDF5)
-
-if(NOT HDF5_FOUND)
-    message(FATAL_ERROR "HDF5 required to compile drf")
-endif()
-
-########################################################################
 # Install directories
 ########################################################################
 include(GrPlatform) #define LIB_SUFFIX
 set(GR_RUNTIME_DIR      bin)
 set(GR_LIBRARY_DIR      lib${LIB_SUFFIX})
-set(GR_INCLUDE_DIR      include/drf)
+set(GR_INCLUDE_DIR      include/gr_drf)
 set(GR_DATA_DIR         share)
 set(GR_PKG_DATA_DIR     ${GR_DATA_DIR}/${CMAKE_PROJECT_NAME})
 set(GR_DOC_DIR          ${GR_DATA_DIR}/doc)
@@ -118,7 +109,7 @@ find_package(Doxygen)
 # Search for GNU Radio and its components and versions. Add any
 # components required to the list of GR_REQUIRED_COMPONENTS (in all
 # caps such as FILTER or FFT) and change the version to the minimum
-# API compatible version required.
+# API comptible version required.
 set(GR_REQUIRED_COMPONENTS RUNTIME)
 find_package(Gnuradio "3.7.2" REQUIRED)
 
@@ -173,7 +164,7 @@ add_custom_target(uninstall
 ########################################################################
 # Add subdirectories
 ########################################################################
-add_subdirectory(include/drf)
+add_subdirectory(include/gr_drf)
 add_subdirectory(lib)
 add_subdirectory(swig)
 add_subdirectory(python)
@@ -188,6 +179,6 @@ if(NOT CMAKE_MODULES_DIR)
   set(CMAKE_MODULES_DIR lib${LIB_SUFFIX}/cmake)
 endif(NOT CMAKE_MODULES_DIR)
 
-install(FILES cmake/Modules/drfConfig.cmake
-    DESTINATION ${CMAKE_MODULES_DIR}/drf
+install(FILES cmake/Modules/grdrfConfig.cmake
+    DESTINATION ${CMAKE_MODULES_DIR}/gr_drf
 )

@@ -1,4 +1,4 @@
-title: gr-drf
+title: gr_drf
 brief: Digital RF module for GNU Radio
 tags:
   - recording
@@ -6,8 +6,7 @@ tags:
 author:
   - Ryan Volz <rvolz@mit.edu>
 copyright_owner:
-  - Juha Vierinen
-  - Ryan Volz
+  - Massachusetts Institute of Technology
 dependencies:
   - gnuradio, digital_rf
 license: GPLv3
