@@ -172,7 +172,7 @@ class Thor(object):
         for mb_num in range(op.nmboards):
             u.set_subdev_spec(op.subdevs[mb_num], mb_num)
         # set global options
-        u.set_samp_rate(op.samplerate)
+        u.set_samp_rate(float(op.samplerate))
         samplerate = u.get_samp_rate()  # may be different than desired
         # calculate longdouble precision sample rate
         # (integer division of clock rate)
@@ -336,15 +336,18 @@ class Thor(object):
         else:
             lt = int(math.ceil(time.time() + 0.5))
         # adjust launch time forward so it falls on an exact sample since epoch
-        lt = np.ceil(lt*samplerate_out)/samplerate_out
+        lt_samples = np.ceil(lt*samplerate_out)
+        # splitting lt into secs/frac lets us set a more accurate time_spec
+        lt_secs = lt_samples // samplerate_out
+        lt_frac = (lt_samples % samplerate_out)/samplerate_out
+        lt = lt_secs + lt_frac
         if op.verbose:
             dtlt = datetime.datetime.utcfromtimestamp(lt)
-            dtltstr = dtlt.strftime('%a %b %d %H:%M:%S %Y')
-            print('Launch time: {0} ({1})'.format(dtltstr, lt))
-        # going through time_spec is only way I found to get a time_t type
-        lt_secs = uhd.time_spec(float(lt // 1.0)).get_full_secs()
-        lt_frac = float(lt % 1.0)
-        u.set_start_time(uhd.time_spec(lt_secs, lt_frac))
+            dtltstr = dtlt.strftime('%a %b %d %H:%M:%S.%f %Y')
+            print('Launch time: {0} ({1})'.format(dtltstr, repr(lt)))
+        u.set_start_time(
+            uhd.time_spec(float(lt_secs)) + uhd.time_spec(float(lt_frac))
+        )
 
         # start to receive data
         fg.start()
