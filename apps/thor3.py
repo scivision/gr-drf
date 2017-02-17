@@ -19,6 +19,7 @@ from textwrap import fill, dedent, TextWrapper
 from itertools import chain, cycle, islice, repeat
 from ast import literal_eval
 from subprocess import call
+from fractions import Fraction
 from gnuradio import gr
 from gnuradio import uhd
 from gnuradio import filter
@@ -185,6 +186,9 @@ class Thor(object):
         srdec = int(round(cr/samplerate))
         samplerate_ld = np.longdouble(cr)/srdec
         op.samplerate = samplerate_ld
+        cr_rat = Fraction(cr).limit_denominator()
+        op.samplerate_num = cr_rat.numerator
+        op.samplerate_den = cr_rat.denominator*srdec
         # set per-channel options
         for ch_num in range(op.nchs):
             u.set_center_freq(
@@ -301,6 +305,8 @@ class Thor(object):
 
         # get output settings that depend on decimation rate
         samplerate_out = op.samplerate/op.dec
+        samplerate_num_out = op.samplerate_num
+        samplerate_den_out = op.samplerate_den*op.dec
         if op.dec > 1:
             sample_size = gr.sizeof_gr_complex
             sample_dtype = '<f4'
@@ -321,7 +327,8 @@ class Thor(object):
             chdir = os.path.join(op.datadir, op.chs[k])
             dst = gr_drf.digital_rf_sink(
                 chdir, sample_size, op.subdir_cadence_s, op.file_cadence_ms,
-                samplerate_out, 'THIS_UUID_LACKS_ENTROPY', True, 1,
+                samplerate_num_out, samplerate_den_out,
+                'THIS_UUID_LACKS_ENTROPY', True, 1,
                 op.stop_on_dropped,
             )
 
@@ -372,12 +379,14 @@ class Thor(object):
                 metadata_dir=mddir,
                 subdirectory_cadence_seconds=op.subdir_cadence_s,
                 file_cadence_seconds=1,
-                samples_per_second=samplerate_out,
+                samples_per_second_numerator=samplerate_num_out,
+                samples_per_second_denominator=samplerate_den_out,
                 file_name='metadata',
             )
             md = op.metadata.copy()
             md.update(
-                sample_rate=samplerate_out,
+                # output sample rate as float until h5py>=2.7 gets widespread
+                sample_rate=float(samplerate_out),
                 sample_period_ps=1000000000000/samplerate_out,
                 center_frequencies=np.array(
                     [op.centerfreqs[k]]

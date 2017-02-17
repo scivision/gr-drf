@@ -23,6 +23,8 @@ namespace gr {
       size_t d_sample_size;
       uint64_t d_subdir_cadence_s;
       uint64_t d_file_cadence_ms;
+      uint64_t d_sample_rate_numerator;
+      uint64_t d_sample_rate_denominator;
       long double d_sample_rate;
       char d_uuid[512];
       bool d_is_complex;
@@ -31,7 +33,6 @@ namespace gr {
 
       Digital_rf_write_object *d_drfo;
       hid_t d_dtype;
-      uint64_t d_t0s; // start time floored to nearest second in samples from unix epoch
       uint64_t d_t0; // start time in samples from unix epoch
       uint64_t d_local_index;
       uint64_t d_total_dropped;
@@ -45,7 +46,9 @@ namespace gr {
      public:
       digital_rf_sink_impl(char *dir, size_t sample_size,
                            uint64_t subdir_cadence_s, uint64_t file_cadence_ms,
-                           long double sample_rate, char* uuid, bool is_complex,
+                           uint64_t sample_rate_numerator,
+                           uint64_t sample_rate_denominator,
+                           char* uuid, bool is_complex,
                            int num_subchannels, bool stop_on_dropped_packet);
       ~digital_rf_sink_impl();
 
@@ -62,4 +65,3 @@ namespace gr {
 } // namespace gr
 
 #endif /* INCLUDED_GRDRF_DIGITAL_RF_SINK_IMPL_H */
-

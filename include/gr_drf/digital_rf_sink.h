@@ -31,7 +31,8 @@ namespace gr {
        * \param sample_size Size of the input data items.
        * \param subdir_cadence_s Number of seconds of data per subdirectory.
        * \param file_cadence_ms Number of milliseconds of data per file.
-       * \param sample_rate Sample rate in Hz.
+       * \param sample_rate_numerator Numerator of sample rate in Hz.
+       * \param sample_rate_denominator Denominator of sample rate in Hz.
        * \param uuid Unique ID to associate with this data, for pairing metadata.
        * \param is_complex True if the data samples are complex.
        * \param num_subchannels Number of subchannels (i.e. vector length).
@@ -44,7 +45,9 @@ namespace gr {
        */
       static sptr make(char *dir, size_t sample_size,
                        uint64_t subdir_cadence_s, uint64_t file_cadence_ms,
-                       long double sample_rate, char* uuid, bool is_complex,
+                       uint64_t sample_rate_numerator,
+                       uint64_t sample_rate_denominator,
+                       char* uuid, bool is_complex,
                        int num_subchannels, bool stop_on_dropped_packet);
     };
 
@@ -52,4 +55,3 @@ namespace gr {
 } // namespace gr
 
 #endif /* INCLUDED_GRDRF_DIGITAL_RF_SINK_H */
-
