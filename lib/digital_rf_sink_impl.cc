@@ -24,12 +24,15 @@ namespace gr {
     digital_rf_sink::sptr
     digital_rf_sink::make(char *dir, size_t sample_size,
                           uint64_t subdir_cadence_s, uint64_t file_cadence_ms,
-                          long double sample_rate, char *uuid, bool is_complex,
+                          uint64_t sample_rate_numerator,
+                          uint64_t sample_rate_denominator,
+                          char *uuid, bool is_complex,
                           int num_subchannels, bool stop_on_dropped_packet)
     {
       return gnuradio::get_initial_sptr
         (new digital_rf_sink_impl(dir, sample_size, subdir_cadence_s,
-                                  file_cadence_ms, sample_rate, uuid,
+                                  file_cadence_ms, sample_rate_numerator,
+                                  sample_rate_denominator, uuid,
                                   is_complex, num_subchannels,
                                   stop_on_dropped_packet));
     }
@@ -40,19 +43,25 @@ namespace gr {
      */
     digital_rf_sink_impl::digital_rf_sink_impl(
             char *dir, size_t sample_size, uint64_t subdir_cadence_s,
-            uint64_t file_cadence_ms, long double sample_rate, char* uuid,
+            uint64_t file_cadence_ms, uint64_t sample_rate_numerator,
+            uint64_t sample_rate_denominator, char* uuid,
             bool is_complex, int num_subchannels, bool stop_on_dropped_packet
     )
       : gr::sync_block("digital_rf_sink",
                gr::io_signature::make(1, 1, sample_size*num_subchannels),
                gr::io_signature::make(0, 0, 0)),
         d_sample_size(sample_size), d_subdir_cadence_s(subdir_cadence_s),
-        d_file_cadence_ms(file_cadence_ms), d_sample_rate(sample_rate),
+        d_file_cadence_ms(file_cadence_ms),
+        d_sample_rate_numerator(sample_rate_numerator),
+        d_sample_rate_denominator(sample_rate_denominator),
         d_is_complex(is_complex), d_num_subchannels(num_subchannels),
         d_stop_on_dropped_packet(stop_on_dropped_packet)
     {
       char command[4096];
       int i;
+
+      d_sample_rate = ((long double)sample_rate_numerator /
+                       (long double)sample_rate_denominator);
 
       if(d_is_complex)
       {
@@ -108,7 +117,7 @@ namespace gr {
       strcpy(d_uuid, uuid);
 
       printf("subdir_cadence_s %lu file_cadence_ms %lu sample_size %d rate %1.2Lf\n",
-             subdir_cadence_s, file_cadence_ms, (int)sample_size, sample_rate);
+             subdir_cadence_s, file_cadence_ms, (int)sample_size, d_sample_rate);
 
       d_zero_buffer = (char *)malloc(ZERO_BUFFER_SIZE*sizeof(char));
       for(i=0; i<ZERO_BUFFER_SIZE; i++) {
@@ -243,15 +252,15 @@ namespace gr {
         /*      Digital_rf_write_object * digital_rf_create_write_hdf5(
                     char * directory, hid_t dtype_id, uint64_t subdir_cadence_secs,
                     uint64_t file_cadence_millisecs, uint64_t global_start_sample,
-                    long double sample_rate, char * uuid_str,
-                    int compression_level, int checksum, int is_complex,
+                    uint64_t sample_rate_numerator, uint64_t sample_rate_denominator,
+                    char * uuid_str, int compression_level, int checksum, int is_complex,
                     int num_subchannels, int is_continuous, int marching_dots
                 )
         */
         d_drfo = digital_rf_create_write_hdf5(
                 d_dir, d_dtype, d_subdir_cadence_s, d_file_cadence_ms, d_t0,
-                d_sample_rate, d_uuid, 0, 0, d_is_complex, d_num_subchannels,
-                1, 1);
+                d_sample_rate_numerator, d_sample_rate_denominator, d_uuid,
+                0, 0, d_is_complex, d_num_subchannels, 1, 1);
         if(!d_drfo) {
           throw std::runtime_error("Failed to create Digital RF writer object");
         }
@@ -278,4 +287,3 @@ namespace gr {
 
   } /* namespace drf */
 } /* namespace gr */
-
