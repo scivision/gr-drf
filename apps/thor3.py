@@ -186,9 +186,9 @@ class Thor(object):
         srdec = int(round(cr/samplerate))
         samplerate_ld = np.longdouble(cr)/srdec
         op.samplerate = samplerate_ld
-        cr_rat = Fraction(cr).limit_denominator()
-        op.samplerate_num = cr_rat.numerator
-        op.samplerate_den = cr_rat.denominator*srdec
+        sr_rat = Fraction(cr).limit_denominator()/srdec
+        op.samplerate_num = sr_rat.numerator
+        op.samplerate_den = sr_rat.denominator
         # set per-channel options
         for ch_num in range(op.nchs):
             u.set_center_freq(
@@ -387,11 +387,14 @@ class Thor(object):
             md.update(
                 # output sample rate as float until h5py>=2.7 gets widespread
                 sample_rate=float(samplerate_out),
-                sample_period_ps=1000000000000/samplerate_out,
+                sample_period_ps=long(np.uint64(np.round(
+                    1000000000000/samplerate_out
+                ))),
                 center_frequencies=np.array(
                     [op.centerfreqs[k]]
                 ).reshape((1, -1)),
-                t0=lt,
+                # output t0 as float until h5py>=2.7 gets widespread
+                t0=float(lt),
                 n_channels=1,
                 itemsize=sample_size,
                 dtype=sample_dtype,
