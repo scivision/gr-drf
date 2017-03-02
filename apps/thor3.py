@@ -63,7 +63,10 @@ class Thor(object):
                     usrpinfo = dict(u.get_usrp_info(chan=ch_num))
                     info = {}
                     info['mb_id'] = usrpinfo['mboard_id']
-                    info['mb_addr'] = op.mboards_bychan[ch_num]
+                    mba = op.mboards_bychan[ch_num]
+                    if mba == 'default':
+                        mba = usrpinfo['mboard_serial']
+                    info['mb_addr'] = mba
                     info['db_subdev'] = usrpinfo['rx_subdev_name']
                     info['subdev'] = op.subdevs_bychan[ch_num]
                     info['ant'] = u.get_antenna(ch_num)
