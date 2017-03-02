@@ -160,7 +160,7 @@ namespace gr {
         t0_frac = pmt::to_double(pmt::tuple_ref(value, 1));
         d_t0 = (uint64_t)(d_sample_rate*t0_sec)
                 + (uint64_t)(d_sample_rate*t0_frac);
-        printf("Time tag @ %lu, %ld\n", offset, d_t0);
+        printf("Time tag @ sample %lu (%lu): %lu+%f\n", offset, d_t0, t0_sec, t0_frac);
       }
     }
 
@@ -171,7 +171,7 @@ namespace gr {
     {
       std::vector<gr::tag_t> rx_time_tags;
       uint64_t dt;
-      int dropped = 0;
+      uint64_t dropped = 0;
       uint64_t drop_index;
       int result;
       int consumed = 0;
@@ -191,12 +191,12 @@ namespace gr {
         drop_index = offset + d_total_dropped;
 
         // we should have this many samples
-        dt = ((int64_t)(d_sample_rate*tt0_sec) + (int64_t)(d_sample_rate*tt0_frac)
-              - (int64_t)d_t0 - (int64_t)d_total_dropped);
+        dt = ((uint64_t)(d_sample_rate*tt0_sec) + (uint64_t)(d_sample_rate*tt0_frac)
+              - d_t0 - d_total_dropped);
 
         dropped = dt - offset;
         d_total_dropped += dropped;
-        printf("\nDropped %u packet(s) @ %lu, total_dropped %lu\n",
+        printf("\nDropped %lu packet(s) @ %lu, total_dropped %lu\n",
                dropped, drop_index, d_total_dropped);
 
         // write in-sequence data up to drop_index
