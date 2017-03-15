@@ -13,6 +13,7 @@ import time
 import datetime
 import dateutil.parser
 import pytz
+import uuid
 import numpy as np
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, Namespace
 from textwrap import fill, dedent, TextWrapper
@@ -39,7 +40,7 @@ class Thor(object):
         stream_args=[],
         sync=True, sync_source='external',
         stop_on_dropped=False, realtime=False,
-        file_cadence_ms=1000, subdir_cadence_s=3600, metadata={},
+        file_cadence_ms=1000, subdir_cadence_s=3600, metadata={}, uuid=None,
         verbose=True, test_settings=True,
     ):
         options = locals()
@@ -78,6 +79,12 @@ class Thor(object):
     def _parse_options(**kwargs):
         """Put all keyword options in a namespace and normalize them."""
         op = Namespace(**kwargs)
+
+        print(op.uuid)
+        if op.uuid is None:
+            # generate random UUID
+            op.uuid = uuid.uuid4().hex
+        print(op.uuid)
 
         op.nmboards = len(op.mboards) if len(op.mboards) > 0 else 1
         op.nchs = len(op.chs)
@@ -331,7 +338,7 @@ class Thor(object):
             dst = gr_drf.digital_rf_sink(
                 chdir, sample_size, op.subdir_cadence_s, op.file_cadence_ms,
                 samplerate_num_out, samplerate_den_out,
-                'THIS_UUID_LACKS_ENTROPY', True, 1,
+                op.uuid, True, 1,
                 op.stop_on_dropped,
             )
 
@@ -597,7 +604,7 @@ if __name__ == '__main__':
     )
     timegroup.add_argument(
         '-l', '--duration', dest='duration',
-        default=None,
+        default=None, type=int,
         help='''Duration of experiment in seconds. When endtime is not given,
                 end this long after start time. (default: %(default)s)''',
     )
@@ -625,6 +632,12 @@ if __name__ == '__main__':
         '--metadata', action='append', metavar='{KEY}={VALUE}',
         help='''Key, value metadata pairs to include with data.
                 (default: "")''',
+    )
+    drfgroup.add_argument(
+        '--uuid', dest='uuid',
+        default=None,
+        help='''Unique ID string for this data collection.
+                (default: random)''',
     )
 
     op = parser.parse_args()
